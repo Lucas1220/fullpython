@@ -608,7 +608,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 
                 if (data.success) {
                     // Store session and redirect
-                    document.cookie = `session_id=${{data.session_id}}; path=/; max-age=345600`; // 96 hours
+                    document.cookie = `session_id=${data.session_id}; path=/; max-age=345600`; // 96 hours
                     showSuccess('Login successful! Redirecting to chatroom...');
                     setTimeout(() => {
                         window.location.href = '/chat';
@@ -682,7 +682,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 const data = await response.json();
                 
                 if (data.authenticated) {
-                    showSuccess(`Welcome back, ${{data.username}}! Redirecting...`);
+                    showSuccess(`Welcome back, ${data.username}! Redirecting...`);
                     setTimeout(() => {
                         window.location.href = '/chat';
                     }, 1000);
@@ -859,6 +859,41 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             overflow-y: auto;
             max-height: 400px;
             margin-bottom: 0;
+            position: relative;
+        }}
+        
+        .scroll-down-btn {{
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            z-index: 100;
+            display: none;
+        }}
+        
+        .scroll-down-btn:hover {{
+            background: #5a6fd8;
+            transform: scale(1.1);
+        }}
+        
+        .scroll-down-btn.show {{
+            display: block;
+            animation: bounceIn 0.3s ease-out;
+        }}
+        
+        @keyframes bounceIn {{
+            0% {{ transform: scale(0); opacity: 0; }}
+            50% {{ transform: scale(1.2); opacity: 1; }}
+            100% {{ transform: scale(1); opacity: 1; }}
         }}
         
         .message {{
@@ -1247,13 +1282,13 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             socket.on('user-joined', (data) => {{
                 console.log('User joined:', data.username);
                 createPeerConnection(data.userId);
-                updateVoiceNotification(`🎤 ${{{data.username}}} joined voice room`);
+                updateVoiceNotification(`🎤 ${{data.username}} joined voice room`);
             }});
             
             socket.on('user-left', (data) => {{
                 console.log('User left:', data.username);
                 closePeerConnection(data.userId);
-                updateVoiceNotification(`📞 ${{{data.username}}} left voice room`);
+                updateVoiceNotification(`📞 ${{data.username}} left voice room`);
             }});
             
             socket.on('offer', async (data) => {{
@@ -1336,7 +1371,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         }}
         
         function loadMessages() {{
-            fetch(`/api/chat/messages?since=${{{lastMessageId}}}`)
+            fetch(`/api/chat/messages?since=${{lastMessageId}}`)
                 .then(response => response.json())
                 .then(data => {{
                     if (data.error === 'Not authenticated') {{
@@ -1363,7 +1398,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }}
             
             messages.forEach(message => {{
-                const existingMessage = document.getElementById(`message-${{{message.id}}}`);
+                const existingMessage = document.getElementById(`message-${{message.id}}`);
                 if (existingMessage) {{
                     return;
                 }}
@@ -1374,28 +1409,27 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 if (message.text.includes('🎤') || message.text.includes('🗣️') || message.text.includes('📞')) messageClass += ' voice';
                 
                 messageDiv.className = messageClass;
-                messageDiv.id = `message-${{{message.id}}}`;
+                messageDiv.id = `message-${{message.id}}`;
                 
                 const timestamp = new Date(message.timestamp).toLocaleTimeString();
                 
                 messageDiv.innerHTML = `
                     <div class="message-header">
-                        <span class="username">${{{escapeHtml(message.username)}}}</span>
-                        <span class="timestamp">${{{timestamp}}}</span>
+                        <span class="username">${{escapeHtml(message.username)}}</span>
+                        <span class="timestamp">${{timestamp}}</span>
                     </div>
-                    <div class="message-text">${{{escapeHtml(message.text)}}}</div>
+                    <div class="message-text">${{escapeHtml(message.text)}}</div>
                 `;
                 
                 container.appendChild(messageDiv);
             }});
             
-            if (Math.abs(container.scrollTop + container.clientHeight - container.scrollHeight) < 100) {
-            }
+            container.scrollTop = container.scrollHeight;
         }}
         
         function updateOnlineCount(messageCount) {{
             const onlineCount = document.getElementById('onlineCount');
-            onlineCount.textContent = `💬 ${{{messageCount}}} messages`;
+            onlineCount.textContent = `💬 ${{messageCount}} messages`;
         }}
         
         function escapeHtml(text) {{
@@ -1447,7 +1481,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('leaveVoiceBtn').style.display = 'inline-flex';
                 document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
                 
-                updateVoiceNotification(`🎤 ${{{currentUser}}} joined the voice room`);
+                updateVoiceNotification(`🎤 ${{currentUser}} joined the voice room`);
                 
             }} catch (error) {{
                 console.error('Error accessing microphone:', error);
@@ -1476,7 +1510,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('leaveVoiceBtn').style.display = 'none';
             document.getElementById('voiceStatus').innerHTML = '🎤 Click "Join Voice Room" to start talking with others!';
             
-            updateVoiceNotification(`📞 ${{{currentUser}}} left the voice room`);
+            updateVoiceNotification(`📞 ${{currentUser}} left the voice room`);
             updateParticipantsList();
         }}
         
@@ -1580,7 +1614,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 peerConnections.delete(userId);
             }}
             
-            const audioElement = document.getElementById(`audio-${{{userId}}}`);
+            const audioElement = document.getElementById(`audio-${{userId}}`);
             if (audioElement) {{
                 audioElement.remove();
             }}
@@ -1590,11 +1624,11 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             const audio = document.createElement('audio');
             audio.srcObject = stream;
             audio.autoplay = true;
-            audio.id = `audio-${{{userId}}}`;
+            audio.id = `audio-${{userId}}`;
             audio.volume = 1.0;
             
             document.body.appendChild(audio);
-            console.log(`Playing audio from user: ${{{userId}}}`);
+            console.log(`Playing audio from user: ${{userId}}`);
         }}
         
         function startTalking() {{
@@ -1666,24 +1700,24 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             participantList.innerHTML = `
                 <div class="participant" id="myParticipant">
                     <span>🎤</span>
-                    <span>You (${{{currentUser}}})</span>
+                    <span>You (${{currentUser}})</span>
                 </div>
             `;
             
             peerConnections.forEach((pc, userId) => {{
                 const participant = document.createElement('div');
                 participant.className = 'participant';
-                participant.id = `participant-${{{userId}}}`;
+                participant.id = `participant-${{userId}}`;
                 participant.innerHTML = `
                     <span>🔊</span>
-                    <span>User ${{{userId.substring(0, 8)}}}...</span>
+                    <span>User ${{userId.substring(0, 8)}}...</span>
                 `;
                 participantList.appendChild(participant);
             }});
         }}
         
         function updateUserVoiceActivity(userId, isActive) {{
-            const participant = document.getElementById(`participant-${{{userId}}}`);
+            const participant = document.getElementById(`participant-${{userId}}`);
             if (participant) {{
                 if (isActive) {{
                     participant.classList.add('speaking');
@@ -1754,8 +1788,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_login()
         elif path == '/api/auth/logout':
             self.handle_logout()
-        elif path == '/api/chat/typing':
-            self.handle_typing()
         elif path == '/api/auth/check':
             self.handle_auth_check()
         elif path == '/api/chat/send':
@@ -1767,20 +1799,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "API endpoint not found")
     
-    
-typing_users = set()
-
-def handle_typing(self):
-    session_id = self.get_session_from_cookies()
-    if session_id and self.is_valid_session(session_id):
-        username = self.get_username_from_session(session_id)
-        if username:
-            typing_users.add(username)
-            threading.Timer(5.0, lambda: typing_users.discard(username)).start()
-    self.send_json_response({"success": True})
-
-
-def handle_register(self):
+    def handle_register(self):
         """Handle user registration"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
@@ -2003,9 +2022,7 @@ def handle_register(self):
                 "github_gist_configured": bool(GITHUB_GIST_TOKEN and GITHUB_GIST_ID),
                 "webhook_configured": bool(EXTERNAL_BACKUP_URL)
             },
-            "uptime": "Running with authentication & persistent storage! 🔐💬🎤",
-        "typing_users": list(getattr(globals().get("typing_users", set()), "__iter__", lambda: [])()),
-        "online_users": [session["username"] for session in user_sessions.values() if datetime.now() < session["expires"]]
+            "uptime": "Running with authentication & persistent storage! 🔐💬🎤"
         }
         
         self.send_json_response(data)
