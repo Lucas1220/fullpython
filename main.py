@@ -1389,7 +1389,9 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 container.appendChild(messageDiv);
             }});
             
-            container.scrollTop = container.scrollHeight;
+            if (Math.abs(container.scrollTop + container.clientHeight - container.scrollHeight) < 100) {
+                container.scrollTop = container.scrollHeight;
+            }
         }}
         
         function updateOnlineCount(messageCount) {{
@@ -1753,6 +1755,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_login()
         elif path == '/api/auth/logout':
             self.handle_logout()
+        elif path == '/api/chat/typing':
+            self.handle_typing()
         elif path == '/api/auth/check':
             self.handle_auth_check()
         elif path == '/api/chat/send':
@@ -1764,7 +1768,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "API endpoint not found")
     
-    def handle_register(self):
+    
+typing_users = set()
+
+def handle_typing(self):
+    session_id = self.get_session_from_cookies()
+    if session_id and self.is_valid_session(session_id):
+        username = self.get_username_from_session(session_id)
+        if username:
+            typing_users.add(username)
+            threading.Timer(5.0, lambda: typing_users.discard(username)).start()
+    self.send_json_response({"success": True})
+
+
+def handle_register(self):
         """Handle user registration"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
@@ -1987,7 +2004,9 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 "github_gist_configured": bool(GITHUB_GIST_TOKEN and GITHUB_GIST_ID),
                 "webhook_configured": bool(EXTERNAL_BACKUP_URL)
             },
-            "uptime": "Running with authentication & persistent storage! 🔐💬🎤"
+            "uptime": "Running with authentication & persistent storage! 🔐💬🎤",
+        "typing_users": list(getattr(globals().get("typing_users", set()), "__iter__", lambda: [])()),
+        "online_users": [session["username"] for session in user_sessions.values() if datetime.now() < session["expires"]]
         }
         
         self.send_json_response(data)
