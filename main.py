@@ -608,7 +608,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 
                 if (data.success) {
                     // Store session and redirect
-                    document.cookie = `session_id=${data.session_id}; path=/; max-age=86400`; // 24 hours
+                    document.cookie = `session_id=${data.session_id}; path=/; max-age=345600`; // 96 hours
                     showSuccess('Login successful! Redirecting to chatroom...');
                     setTimeout(() => {
                         window.location.href = '/chat';
