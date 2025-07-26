@@ -6,154 +6,53 @@ import urllib.parse
 import json
 import time
 import threading
-import hashlib
-import secrets
-import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 PORT = int(os.environ.get('PORT', 8080))
 
-# Global storage
+# Global chatroom storage
 chatroom_messages = []
 chatroom_lock = threading.Lock()
-active_sessions = {}  # session_token -> user_data
-session_lock = threading.Lock()
-
-# Database setup
-def init_database():
-    """Initialize SQLite database for user accounts"""
-    conn = sqlite3.connect('chatroom_users.db')
-    cursor = conn.cursor()
-    
-    # Create users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            salt TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            last_login TEXT,
-            is_active INTEGER DEFAULT 1,
-            avatar_color TEXT DEFAULT '#667eea',
-            display_name TEXT,
-            bio TEXT DEFAULT '',
-            message_count INTEGER DEFAULT 0
-        )
-    ''')
-    
-    # Create sessions table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS sessions (
-            session_token TEXT PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL,
-            expires_at TEXT NOT NULL,
-            ip_address TEXT,
-            user_agent TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-
-# User authentication functions
-def hash_password(password, salt=None):
-    """Hash password with salt"""
-    if salt is None:
-        salt = secrets.token_hex(32)
-    
-    password_hash = hashlib.pbkdf2_hmac('sha256', 
-                                       password.encode('utf-8'), 
-                                       salt.encode('utf-8'), 
-                                       100000)
-    return password_hash.hex(), salt
-
-def verify_password(password, password_hash, salt):
-    """Verify password against hash"""
-    test_hash, _ = hash_password(password, salt)
-    return test_hash == password_hash
-
-def create_session(user_id, ip_address, user_agent):
-    """Create new session token"""
-    session_token = secrets.token_urlsafe(32)
-    expires_at = (datetime.now() + timedelta(days=30)).isoformat()
-    
-    conn = sqlite3.connect('chatroom_users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        INSERT INTO sessions (session_token, user_id, created_at, expires_at, ip_address, user_agent)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (session_token, user_id, datetime.now().isoformat(), expires_at, ip_address, user_agent))
-    
-    conn.commit()
-    conn.close()
-    
-    return session_token
-
-def get_user_by_session(session_token):
-    """Get user data by session token"""
-    conn = sqlite3.connect('chatroom_users.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT u.id, u.username, u.email, u.display_name, u.avatar_color, u.bio, u.message_count
-        FROM users u
-        JOIN sessions s ON u.id = s.user_id
-        WHERE s.session_token = ? AND s.expires_at > ?
-    ''', (session_token, datetime.now().isoformat()))
-    
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        return {
-            'id': result[0],
-            'username': result[1],
-            'email': result[2],
-            'display_name': result[3] or result[1],
-            'avatar_color': result[4],
-            'bio': result[5],
-            'message_count': result[6]
-        }
-    return None
 
 class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
+        # Set up MIME types for different file extensions
         mimetypes.add_type('application/javascript', '.js')
         mimetypes.add_type('text/css', '.css')
         mimetypes.add_type('application/json', '.json')
         super().__init__(*args, **kwargs)
     
     def do_GET(self):
+        # Parse the URL path
         parsed_path = urllib.parse.urlparse(self.path)
         path = parsed_path.path
         
+        # Handle root path - serve chatroom
         if path == '/':
             self.serve_chatroom()
             return
         
+        # Handle API endpoints
         if path.startswith('/api/'):
             self.handle_api(path)
             return
         
+        # Try to serve static files
         if self.serve_static_file(path):
             return
         
+        # If file not found, serve 404
         self.send_error(404, "File not found")
     
     def serve_chatroom(self):
-        """Serve the chatroom with authentication system"""
+        """Serve the public chatroom interface with voice room connected to Render server"""
         html_content = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secured Chatroom + Voice Room 🔐💬🎤</title>
+    <title>Chatroom + Voice Room 🎤💬</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         * {
@@ -170,187 +69,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             flex-direction: column;
         }
         
-        /* Auth Modal Styles */
-        .auth-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        
-        .auth-container {
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            width: 90%;
-            max-width: 400px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-            text-align: center;
-            position: relative;
-        }
-        
-        .auth-toggle {
-            display: flex;
-            background: #f0f0f0;
-            border-radius: 25px;
-            margin-bottom: 30px;
-            overflow: hidden;
-        }
-        
-        .auth-toggle button {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            background: transparent;
-            cursor: pointer;
-            font-weight: bold;
-            transition: all 0.3s ease;
-        }
-        
-        .auth-toggle button.active {
-            background: #667eea;
-            color: white;
-        }
-        
-        .auth-form {
-            display: none;
-        }
-        
-        .auth-form.active {
-            display: block;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #333;
-        }
-        
-        .form-group input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .auth-btn {
-            width: 100%;
-            padding: 15px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .auth-btn:hover {
-            background: #5a6fd8;
-            transform: translateY(-1px);
-        }
-        
-        .auth-error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        
-        .auth-success {
-            background: #e8f5e8;
-            color: #2e7d32;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            display: none;
-        }
-        
-        /* User Profile Styles */
-        .user-profile {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 10px;
-            padding: 10px 15px;
-            margin-left: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .user-profile:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-        
-        .user-avatar {
-            width: 35px;
-            height: 35px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            color: white;
-            font-size: 14px;
-        }
-        
-        .user-info {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-        }
-        
-        .user-name {
-            font-weight: bold;
-            font-size: 14px;
-        }
-        
-        .user-messages {
-            font-size: 11px;
-            opacity: 0.8;
-        }
-        
-        .logout-btn {
-            background: rgba(244, 67, 54, 0.8);
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-left: 10px;
-        }
-        
-        .logout-btn:hover {
-            background: rgba(244, 67, 54, 1);
-        }
-        
-        /* Existing styles from original code */
         .header {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
@@ -358,13 +76,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             text-align: center;
             color: white;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .header-left {
-            flex: 1;
         }
         
         .header h1 {
@@ -436,6 +147,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             to { opacity: 1; transform: translateY(0); }
         }
         
+        /* Chat Room Styles */
         .messages-container {
             flex: 1;
             background: rgba(255, 255, 255, 0.95);
@@ -477,21 +189,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         .username {
             font-weight: bold;
             color: #667eea;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .message-avatar {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            color: white;
-            font-weight: bold;
         }
         
         .timestamp {
@@ -512,6 +209,14 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             display: flex;
             gap: 10px;
             align-items: center;
+        }
+        
+        #usernameInput {
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            width: 150px;
+            font-size: 14px;
         }
         
         #messageInput {
@@ -700,14 +405,13 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         }
         
         @media (max-width: 600px) {
-            .header {
-                flex-direction: column;
-                gap: 15px;
-            }
-            
             .input-container {
                 flex-direction: column;
                 gap: 10px;
+            }
+            
+            #usernameInput {
+                width: 100%;
             }
             
             .voice-controls {
@@ -722,88 +426,24 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     </style>
 </head>
 <body>
-    <!-- Authentication Modal -->
-    <div id="authModal" class="auth-modal">
-        <div class="auth-container">
-            <h2>🔐 Welcome to Secured Chatroom</h2>
-            
-            <div class="auth-toggle">
-                <button onclick="showLogin()" id="loginToggle" class="active">Login</button>
-                <button onclick="showRegister()" id="registerToggle">Register</button>
-            </div>
-            
-            <div id="authError" class="auth-error"></div>
-            <div id="authSuccess" class="auth-success"></div>
-            
-            <!-- Login Form -->
-            <form id="loginForm" class="auth-form active" onsubmit="handleLogin(event)">
-                <div class="form-group">
-                    <label for="loginUsername">Username or Email</label>
-                    <input type="text" id="loginUsername" required>
-                </div>
-                <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" required>
-                </div>
-                <button type="submit" class="auth-btn">🔑 Login</button>
-            </form>
-            
-            <!-- Register Form -->
-            <form id="registerForm" class="auth-form" onsubmit="handleRegister(event)">
-                <div class="form-group">
-                    <label for="registerUsername">Username</label>
-                    <input type="text" id="registerUsername" required minlength="3" maxlength="20">
-                </div>
-                <div class="form-group">
-                    <label for="registerEmail">Email</label>
-                    <input type="email" id="registerEmail" required>
-                </div>
-                <div class="form-group">
-                    <label for="registerDisplayName">Display Name (Optional)</label>
-                    <input type="text" id="registerDisplayName" maxlength="30">
-                </div>
-                <div class="form-group">
-                    <label for="registerPassword">Password</label>
-                    <input type="password" id="registerPassword" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label for="registerConfirmPassword">Confirm Password</label>
-                    <input type="password" id="registerConfirmPassword" required>
-                </div>
-                <button type="submit" class="auth-btn">📝 Create Account</button>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Main App -->
     <div class="header">
-        <div class="header-left">
-            <h1>🔐💬🎤 Secured Chatroom + Voice Room</h1>
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('chat')">💬 Text Chat</button>
-                <button class="tab-btn" onclick="switchTab('voice')">🎤 Voice Room</button>
-            </div>
-            <div class="online-count" id="onlineCount">🟢 Loading...</div>
+        <h1>🎤💬 Chatroom + Voice Room</h1>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('chat')">💬 Text Chat</button>
+            <button class="tab-btn" onclick="switchTab('voice')">🎤 Voice Room</button>
         </div>
-        
-        <div id="userProfile" class="user-profile" style="display: none;">
-            <div id="userAvatar" class="user-avatar"></div>
-            <div class="user-info">
-                <div id="userName" class="user-name"></div>
-                <div id="userMessages" class="user-messages"></div>
-            </div>
-            <button onclick="logout()" class="logout-btn">Logout</button>
-        </div>
+        <div class="online-count" id="onlineCount">🟢 Loading...</div>
     </div>
     
     <div class="main-container">
         <!-- Text Chat Tab -->
         <div id="chatTab" class="tab-content active">
             <div class="messages-container" id="messagesContainer">
-                <div class="no-messages">Welcome to the secured chatroom! Send a message to get started 🚀</div>
+                <div class="no-messages">Welcome to the chatroom! Send a message to get started 🚀</div>
             </div>
             
             <div class="input-container">
+                <input type="text" id="usernameInput" placeholder="Your name" maxlength="20" value="Anonymous">
                 <textarea id="messageInput" placeholder="Type your message..." rows="1" maxlength="500"></textarea>
                 <button class="emoji-btn" onclick="addEmoji('😊')">😊</button>
                 <button class="emoji-btn" onclick="addEmoji('👍')">👍</button>
@@ -852,9 +492,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     </div>
 
     <script>
-        // Global variables
-        let currentUser = null;
-        let sessionToken = null;
+        let currentUser = 'Anonymous';
         let lastMessageId = 0;
         
         // Voice variables
@@ -866,210 +504,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         let isTalking = false;
         let roomId = 'main-voice-room';
         
+        // Connect to your Render signaling server
         const SIGNALING_SERVER = 'https://repo1-ejq1.onrender.com';
-        
-        // Authentication functions
-        function showLogin() {
-            document.getElementById('loginToggle').classList.add('active');
-            document.getElementById('registerToggle').classList.remove('active');
-            document.getElementById('loginForm').classList.add('active');
-            document.getElementById('registerForm').classList.remove('active');
-            clearAuthMessages();
-        }
-        
-        function showRegister() {
-            document.getElementById('loginToggle').classList.remove('active');
-            document.getElementById('registerToggle').classList.add('active');
-            document.getElementById('loginForm').classList.remove('active');
-            document.getElementById('registerForm').classList.add('active');
-            clearAuthMessages();
-        }
-        
-        function clearAuthMessages() {
-            document.getElementById('authError').style.display = 'none';
-            document.getElementById('authSuccess').style.display = 'none';
-        }
-        
-        function showAuthError(message) {
-            const errorDiv = document.getElementById('authError');
-            errorDiv.textContent = message;
-            errorDiv.style.display = 'block';
-            document.getElementById('authSuccess').style.display = 'none';
-        }
-        
-        function showAuthSuccess(message) {
-            const successDiv = document.getElementById('authSuccess');
-            successDiv.textContent = message;
-            successDiv.style.display = 'block';
-            document.getElementById('authError').style.display = 'none';
-        }
-        
-        async function handleLogin(event) {
-            event.preventDefault();
-            clearAuthMessages();
-            
-            const username = document.getElementById('loginUsername').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ username, password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    sessionToken = data.sessionToken;
-                    currentUser = data.user;
-                    localStorage.setItem('sessionToken', sessionToken);
-                    showAuthSuccess('Login successful! Welcome back!');
-                    setTimeout(() => {
-                        hideAuthModal();
-                        updateUserProfile();
-                    }, 1000);
-                } else {
-                    showAuthError(data.error || 'Login failed');
-                }
-            } catch (error) {
-                showAuthError('Network error. Please try again.');
-                console.error('Login error:', error);
-            }
-        }
-        
-        async function handleRegister(event) {
-            event.preventDefault();
-            clearAuthMessages();
-            
-            const username = document.getElementById('registerUsername').value.trim();
-            const email = document.getElementById('registerEmail').value.trim();
-            const displayName = document.getElementById('registerDisplayName').value.trim();
-            const password = document.getElementById('registerPassword').value;
-            const confirmPassword = document.getElementById('registerConfirmPassword').value;
-            
-            if (password !== confirmPassword) {
-                showAuthError('Passwords do not match');
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/auth/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ username, email, displayName, password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    showAuthSuccess('Account created successfully! You can now login.');
-                    setTimeout(() => {
-                        showLogin();
-                        document.getElementById('loginUsername').value = username;
-                    }, 1500);
-                } else {
-                    showAuthError(data.error || 'Registration failed');
-                }
-            } catch (error) {
-                showAuthError('Network error. Please try again.');
-                console.error('Registration error:', error);
-            }
-        }
-        
-        async function checkSession() {
-            const savedToken = localStorage.getItem('sessionToken');
-            if (!savedToken) {
-                showAuthModal();
-                return false;
-            }
-            
-            try {
-                const response = await fetch('/api/auth/verify', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ sessionToken: savedToken })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    sessionToken = savedToken;
-                    currentUser = data.user;
-                    hideAuthModal();
-                    updateUserProfile();
-                    return true;
-                } else {
-                    localStorage.removeItem('sessionToken');
-                    showAuthModal();
-                    return false;
-                }
-            } catch (error) {
-                console.error('Session verification error:', error);
-                localStorage.removeItem('sessionToken');
-                showAuthModal();
-                return false;
-            }
-        }
-        
-        function showAuthModal() {
-            document.getElementById('authModal').style.display = 'flex';
-        }
-        
-        function hideAuthModal() {
-            document.getElementById('authModal').style.display = 'none';
-        }
-        
-        function updateUserProfile() {
-            if (!currentUser) return;
-            
-            const profileDiv = document.getElementById('userProfile');
-            const avatarDiv = document.getElementById('userAvatar');
-            const nameDiv = document.getElementById('userName');
-            const messagesDiv = document.getElementById('userMessages');
-            
-            avatarDiv.style.backgroundColor = currentUser.avatar_color;
-            avatarDiv.textContent = currentUser.display_name.charAt(0).toUpperCase();
-            nameDiv.textContent = currentUser.display_name;
-            messagesDiv.textContent = `${currentUser.message_count} messages`;
-            
-            profileDiv.style.display = 'flex';
-        }
-        
-        function logout() {
-            if (sessionToken) {
-                fetch('/api/auth/logout', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ sessionToken })
-                }).catch(console.error);
-            }
-            
-            localStorage.removeItem('sessionToken');
-            sessionToken = null;
-            currentUser = null;
-            
-            document.getElementById('userProfile').style.display = 'none';
-            
-            if (isInVoiceRoom) {
-                leaveVoiceRoom();
-            }
-            
-            showAuthModal();
-            
-            // Clear forms
-            document.getElementById('loginForm').reset();
-            document.getElementById('registerForm').reset();
-            clearAuthMessages();
-        }
         
         // Tab switching
         function switchTab(tabName) {
@@ -1140,6 +576,10 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             this.style.height = Math.min(this.scrollHeight, 100) + 'px';
         });
         
+        document.getElementById('usernameInput').addEventListener('input', function() {
+            currentUser = this.value.trim() || 'Anonymous';
+        });
+        
         messageInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
@@ -1153,70 +593,51 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             input.focus();
         }
         
-        async function sendMessage() {
-            if (!currentUser || !sessionToken) {
-                showAuthError('Please login to send messages');
-                return;
-            }
-            
+        function sendMessage() {
             const messageText = messageInput.value.trim();
             if (!messageText) return;
             
             const message = {
+                username: currentUser,
                 text: messageText,
-                timestamp: new Date().toISOString(),
-                sessionToken: sessionToken
+                timestamp: new Date().toISOString()
             };
             
-            try {
-                const response = await fetch('/api/chat/send', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(message)
-                });
-                
-                const data = await response.json();
-                
+            fetch('/api/chat/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(message)
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.success) {
                     messageInput.value = '';
                     messageInput.style.height = 'auto';
                     if (data.messageId) {
                         lastMessageId = data.messageId;
                     }
-                    // Update user message count
-                    if (currentUser) {
-                        currentUser.message_count++;
-                        updateUserProfile();
-                    }
-                } else if (data.error === 'Invalid session') {
-                    logout();
                 }
-            } catch (error) {
+            })
+            .catch(error => {
                 console.error('Error sending message:', error);
-            }
+            });
         }
         
-        async function loadMessages() {
-            if (!sessionToken) return;
-            
-            try {
-                const response = await fetch(`/api/chat/messages?since=${lastMessageId}&sessionToken=${sessionToken}`);
-                const data = await response.json();
-                
-                if (data.success) {
+        function loadMessages() {
+            fetch(`/api/chat/messages?since=${lastMessageId}`)
+                .then(response => response.json())
+                .then(data => {
                     if (data.messages && data.messages.length > 0) {
                         displayMessages(data.messages);
                         lastMessageId = data.lastId;
                     }
                     updateOnlineCount(data.messageCount || 0);
-                } else if (data.error === 'Invalid session') {
-                    logout();
-                }
-            } catch (error) {
-                console.error('Error loading messages:', error);
-            }
+                })
+                .catch(error => {
+                    console.error('Error loading messages:', error);
+                });
         }
         
         function displayMessages(messages) {
@@ -1235,7 +656,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 
                 const messageDiv = document.createElement('div');
                 let messageClass = 'message';
-                if (message.username === currentUser?.username) messageClass += ' own';
+                if (message.username === currentUser) messageClass += ' own';
                 if (message.text.includes('🎤') || message.text.includes('🗣️') || message.text.includes('📞')) messageClass += ' voice';
                 
                 messageDiv.className = messageClass;
@@ -1245,12 +666,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 
                 messageDiv.innerHTML = `
                     <div class="message-header">
-                        <span class="username">
-                            <div class="message-avatar" style="background-color: ${message.avatar_color || '#667eea'}">
-                                ${message.display_name.charAt(0).toUpperCase()}
-                            </div>
-                            ${escapeHtml(message.display_name)}
-                        </span>
+                        <span class="username">${escapeHtml(message.username)}</span>
                         <span class="timestamp">${timestamp}</span>
                     </div>
                     <div class="message-text">${escapeHtml(message.text)}</div>
@@ -1274,12 +690,10 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         }
         
         function updateVoiceNotification(text) {
-            if (!sessionToken) return;
-            
             const message = {
+                username: 'Voice System',
                 text: text,
-                timestamp: new Date().toISOString(),
-                sessionToken: sessionToken
+                timestamp: new Date().toISOString()
             };
             
             fetch('/api/chat/send', {
@@ -1293,11 +707,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         
         // Voice Room functionality
         async function joinVoiceRoom() {
-            if (!currentUser) {
-                alert('Please login to join voice room');
-                return;
-            }
-            
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
@@ -1307,24 +716,27 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                     }
                 });
                 
+                // Mute by default (push-to-talk)
                 localStream.getAudioTracks().forEach(track => {
                     track.enabled = false;
                 });
                 
                 isInVoiceRoom = true;
                 
+                // Join the voice room via socket
                 socket.emit('join-room', {
                     roomId: roomId,
-                    username: currentUser.display_name
+                    username: currentUser
                 });
                 
+                // Update UI
                 document.getElementById('joinVoiceBtn').style.display = 'none';
                 document.getElementById('talkBtn').classList.remove('disabled');
                 document.getElementById('muteBtn').style.display = 'inline-flex';
                 document.getElementById('leaveVoiceBtn').style.display = 'inline-flex';
                 document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
                 
-                updateVoiceNotification(`🎤 ${currentUser.display_name} joined the voice room`);
+                updateVoiceNotification(`🎤 ${currentUser} joined the voice room`);
                 
             } catch (error) {
                 console.error('Error accessing microphone:', error);
@@ -1338,6 +750,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 localStream = null;
             }
             
+            // Close all peer connections
             peerConnections.forEach((pc, userId) => {
                 pc.close();
             });
@@ -1347,15 +760,14 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             isTalking = false;
             isMuted = false;
             
+            // Update UI
             document.getElementById('joinVoiceBtn').style.display = 'inline-flex';
             document.getElementById('talkBtn').classList.add('disabled');
             document.getElementById('muteBtn').style.display = 'none';
             document.getElementById('leaveVoiceBtn').style.display = 'none';
             document.getElementById('voiceStatus').innerHTML = '🎤 Click "Join Voice Room" to start talking with others!';
             
-            if (currentUser) {
-                updateVoiceNotification(`📞 ${currentUser.display_name} left the voice room`);
-            }
+            updateVoiceNotification(`📞 ${currentUser} left the voice room`);
             updateParticipantsList();
         }
         
@@ -1367,17 +779,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 ]
             });
             
+            // Add local stream
             if (localStream) {
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
             }
             
+            // Handle remote stream
             peerConnection.ontrack = (event) => {
                 const remoteStream = event.streams[0];
                 playRemoteAudio(remoteStream, userId);
             };
             
+            // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('ice-candidate', {
@@ -1389,6 +804,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             
             peerConnections.set(userId, peerConnection);
             
+            // Create offer for new user
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             
@@ -1406,17 +822,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 ]
             });
             
+            // Add local stream
             if (localStream) {
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
             }
             
+            // Handle remote stream
             peerConnection.ontrack = (event) => {
                 const remoteStream = event.streams[0];
                 playRemoteAudio(remoteStream, fromUserId);
             };
             
+            // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     socket.emit('ice-candidate', {
@@ -1459,6 +878,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 peerConnections.delete(userId);
             }
             
+            // Remove audio element
             const audioElement = document.getElementById(`audio-${userId}`);
             if (audioElement) {
                 audioElement.remove();
@@ -1488,6 +908,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('talkBtn').classList.add('recording');
             document.getElementById('voiceStatus').innerHTML = '🔴 Talking... Release button to stop';
             
+            // Notify server about voice activity
             socket.emit('voice-activity', { isActive: true });
         }
         
@@ -1503,6 +924,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('talkBtn').classList.remove('recording');
             document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
             
+            // Notify server about voice activity
             socket.emit('voice-activity', { isActive: false });
         }
         
@@ -1545,10 +967,11 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             participantList.innerHTML = `
                 <div class="participant" id="myParticipant">
                     <span>🎤</span>
-                    <span>You (${currentUser?.display_name || 'User'})</span>
+                    <span>You (${currentUser})</span>
                 </div>
             `;
             
+            // Add connected users
             peerConnections.forEach((pc, userId) => {
                 const participant = document.createElement('div');
                 participant.className = 'participant';
@@ -1572,32 +995,21 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }
         }
         
+        // Prevent context menu on talk button
         document.getElementById('talkBtn').addEventListener('contextmenu', e => e.preventDefault());
         
         // Initialize everything when page loads
-        document.addEventListener('DOMContentLoaded', async function() {
-            console.log('🔐 Secured Chatroom + Voice Room loading...');
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize voice connection
+            initializeVoiceConnection();
             
-            // Check if user is already logged in
-            const isLoggedIn = await checkSession();
+            // Auto-refresh messages every 2 seconds
+            setInterval(loadMessages, 2000);
             
-            if (isLoggedIn) {
-                // Initialize voice connection
-                initializeVoiceConnection();
-                
-                // Auto-refresh messages every 2 seconds
-                setInterval(loadMessages, 2000);
-                
-                // Load initial messages
-                loadMessages();
-                
-                console.log('✅ User authenticated and chatroom loaded!');
-            } else {
-                console.log('🔑 Please login to continue');
-            }
+            // Load initial messages
+            loadMessages();
             
-            console.log('🎉 Secured Chatroom + Voice Room ready!');
-            console.log('🔐 Authentication system active');
+            console.log('🎉 Chatroom + Voice Room loaded!');
             console.log('💬 Text chat ready');
             console.log('🎤 Voice room connected to your Render server');
             console.log('🌐 Signaling server:', SIGNALING_SERVER);
@@ -1615,15 +1027,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     
     def handle_api(self, path):
         """Handle API endpoints"""
-        if path == '/api/auth/register':
-            self.handle_register()
-        elif path == '/api/auth/login':
-            self.handle_login()
-        elif path == '/api/auth/verify':
-            self.handle_verify_session()
-        elif path == '/api/auth/logout':
-            self.handle_logout()
-        elif path == '/api/chat/send':
+        if path == '/api/chat/send':
             self.handle_chat_send()
         elif path.startswith('/api/chat/messages'):
             self.handle_chat_messages(path)
@@ -1632,170 +1036,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         else:
             self.send_error(404, "API endpoint not found")
     
-    def handle_register(self):
-        """Handle user registration"""
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            username = data.get('username', '').strip()[:20]
-            email = data.get('email', '').strip()
-            display_name = data.get('displayName', '').strip()[:30] or username
-            password = data.get('password', '')
-            
-            # Validation
-            if len(username) < 3:
-                self.send_json_response({"success": False, "error": "Username must be at least 3 characters"})
-                return
-            
-            if len(password) < 6:
-                self.send_json_response({"success": False, "error": "Password must be at least 6 characters"})
-                return
-            
-            if '@' not in email:
-                self.send_json_response({"success": False, "error": "Invalid email address"})
-                return
-            
-            # Hash password
-            password_hash, salt = hash_password(password)
-            
-            # Generate random avatar color
-            colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe', '#43e97b', '#38f9d7', '#ffecd2', '#fcb69f']
-            avatar_color = secrets.choice(colors)
-            
-            conn = sqlite3.connect('chatroom_users.db')
-            cursor = conn.cursor()
-            
-            try:
-                cursor.execute('''
-                    INSERT INTO users (username, email, password_hash, salt, created_at, avatar_color, display_name)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (username, email, password_hash, salt, datetime.now().isoformat(), avatar_color, display_name))
-                
-                conn.commit()
-                self.send_json_response({"success": True, "message": "Account created successfully"})
-                
-            except sqlite3.IntegrityError as e:
-                if 'username' in str(e):
-                    self.send_json_response({"success": False, "error": "Username already exists"})
-                elif 'email' in str(e):
-                    self.send_json_response({"success": False, "error": "Email already registered"})
-                else:
-                    self.send_json_response({"success": False, "error": "Registration failed"})
-            finally:
-                conn.close()
-                
-        except json.JSONDecodeError:
-            self.send_json_response({"success": False, "error": "Invalid JSON"})
-        except Exception as e:
-            self.send_json_response({"success": False, "error": "Server error"})
-            print(f"Registration error: {e}")
-    
-    def handle_login(self):
-        """Handle user login"""
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            username_or_email = data.get('username', '').strip()
-            password = data.get('password', '')
-            
-            conn = sqlite3.connect('chatroom_users.db')
-            cursor = conn.cursor()
-            
-            # Check if login is username or email
-            cursor.execute('''
-                SELECT id, username, email, password_hash, salt, display_name, avatar_color, bio, message_count
-                FROM users 
-                WHERE (username = ? OR email = ?) AND is_active = 1
-            ''', (username_or_email, username_or_email))
-            
-            user = cursor.fetchone()
-            
-            if user and verify_password(password, user[3], user[4]):
-                # Update last login
-                cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', 
-                             (datetime.now().isoformat(), user[0]))
-                conn.commit()
-                
-                # Create session
-                session_token = create_session(
-                    user[0], 
-                    self.client_address[0], 
-                    self.headers.get('User-Agent', '')
-                )
-                
-                user_data = {
-                    'id': user[0],
-                    'username': user[1],
-                    'email': user[2],
-                    'display_name': user[5] or user[1],
-                    'avatar_color': user[6],
-                    'bio': user[7],
-                    'message_count': user[8]
-                }
-                
-                self.send_json_response({
-                    "success": True, 
-                    "sessionToken": session_token,
-                    "user": user_data
-                })
-            else:
-                self.send_json_response({"success": False, "error": "Invalid username/email or password"})
-            
-            conn.close()
-            
-        except json.JSONDecodeError:
-            self.send_json_response({"success": False, "error": "Invalid JSON"})
-        except Exception as e:
-            self.send_json_response({"success": False, "error": "Server error"})
-            print(f"Login error: {e}")
-    
-    def handle_verify_session(self):
-        """Verify session token"""
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            session_token = data.get('sessionToken', '')
-            user_data = get_user_by_session(session_token)
-            
-            if user_data:
-                self.send_json_response({"success": True, "user": user_data})
-            else:
-                self.send_json_response({"success": False, "error": "Invalid session"})
-                
-        except json.JSONDecodeError:
-            self.send_json_response({"success": False, "error": "Invalid JSON"})
-        except Exception as e:
-            self.send_json_response({"success": False, "error": "Server error"})
-            print(f"Session verification error: {e}")
-    
-    def handle_logout(self):
-        """Handle user logout"""
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            session_token = data.get('sessionToken', '')
-            
-            if session_token:
-                conn = sqlite3.connect('chatroom_users.db')
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM sessions WHERE session_token = ?', (session_token,))
-                conn.commit()
-                conn.close()
-            
-            self.send_json_response({"success": True, "message": "Logged out successfully"})
-            
-        except Exception as e:
-            self.send_json_response({"success": False, "error": "Server error"})
-            print(f"Logout error: {e}")
-    
     def handle_chat_send(self):
         """Handle sending a new chat message"""
         try:
@@ -1803,47 +1043,34 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             message_data = json.loads(post_data.decode('utf-8'))
             
-            session_token = message_data.get('sessionToken', '')
-            text = message_data.get('text', '')[:500]
+            # Validate message data
+            username = message_data.get('username', 'Anonymous')[:20]  # Limit username length
+            text = message_data.get('text', '')[:500]  # Limit message length
             
             if not text.strip():
                 self.send_json_response({"success": False, "error": "Empty message"})
                 return
             
-            # Verify session and get user
-            user_data = get_user_by_session(session_token)
-            if not user_data:
-                self.send_json_response({"success": False, "error": "Invalid session"})
-                return
-            
-            # Add message to global storage
+            # Add message to global storage with proper ID generation
             with chatroom_lock:
+                # Generate unique ID based on current max ID + 1
                 new_id = max([msg['id'] for msg in chatroom_messages], default=0) + 1
                 
                 message = {
                     'id': new_id,
-                    'username': user_data['username'],
-                    'display_name': user_data['display_name'],
-                    'avatar_color': user_data['avatar_color'],
+                    'username': username,
                     'text': text.strip(),
                     'timestamp': datetime.now().isoformat(),
-                    'user_id': user_data['id'],
-                    'ip': self.client_address[0]
+                    'ip': self.client_address[0]  # For potential moderation
                 }
                 chatroom_messages.append(message)
                 
-                # Keep only last 100 messages
+                # Keep only last 100 messages to prevent memory issues
                 if len(chatroom_messages) > 100:
                     chatroom_messages.pop(0)
+                    # Reassign IDs after removing old messages to maintain sequence
                     for i, msg in enumerate(chatroom_messages):
                         msg['id'] = i + 1
-            
-            # Update user message count in database
-            conn = sqlite3.connect('chatroom_users.db')
-            cursor = conn.cursor()
-            cursor.execute('UPDATE users SET message_count = message_count + 1 WHERE id = ?', (user_data['id'],))
-            conn.commit()
-            conn.close()
             
             self.send_json_response({"success": True, "message": "Message sent", "messageId": new_id})
             
@@ -1851,79 +1078,39 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"success": False, "error": "Invalid JSON"})
         except Exception as e:
             self.send_json_response({"success": False, "error": str(e)})
-            print(f"Send message error: {e}")
     
     def handle_chat_messages(self, path):
         """Handle retrieving chat messages"""
-        try:
-            # Parse query parameters
-            query_params = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-            since_id = int(query_params.get('since', [0])[0])
-            session_token = query_params.get('sessionToken', [''])[0]
+        # Parse query parameters
+        query_params = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+        since_id = int(query_params.get('since', [0])[0])
+        
+        with chatroom_lock:
+            # Get messages since the specified ID
+            new_messages = [msg for msg in chatroom_messages if msg['id'] > since_id]
             
-            # Verify session
-            user_data = get_user_by_session(session_token)
-            if not user_data:
-                self.send_json_response({"success": False, "error": "Invalid session"})
-                return
-            
-            with chatroom_lock:
-                # Get messages since the specified ID
-                new_messages = [msg for msg in chatroom_messages if msg['id'] > since_id]
-                
-                response_data = {
-                    "success": True,
-                    "messages": new_messages,
-                    "lastId": chatroom_messages[-1]['id'] if chatroom_messages else 0,
-                    "messageCount": len(chatroom_messages)
-                }
-            
-            self.send_json_response(response_data)
-            
-        except Exception as e:
-            self.send_json_response({"success": False, "error": "Server error"})
-            print(f"Load messages error: {e}")
+            response_data = {
+                "messages": new_messages,
+                "lastId": chatroom_messages[-1]['id'] if chatroom_messages else 0,
+                "messageCount": len(chatroom_messages)
+            }
+        
+        self.send_json_response(response_data)
     
     def handle_status(self):
         """Handle server status"""
         with chatroom_lock:
             message_count = len(chatroom_messages)
         
-        # Get user count from database
-        conn = sqlite3.connect('chatroom_users.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM users WHERE is_active = 1')
-        user_count = cursor.fetchone()[0]
-        
-        # Get active sessions count
-        cursor.execute('SELECT COUNT(*) FROM sessions WHERE expires_at > ?', (datetime.now().isoformat(),))
-        active_sessions_count = cursor.fetchone()[0]
-        conn.close()
-        
         data = {
             "status": "online",
-            "server": "Secured Chatroom + Voice Room Server",
-            "version": "6.0",
+            "server": "Chatroom + Voice Room Server",
+            "version": "5.0",
             "timestamp": time.time(),
             "total_messages": message_count,
-            "total_users": user_count,
-            "active_sessions": active_sessions_count,
             "signaling_server": "https://repo1-ejq1.onrender.com",
-            "features": [
-                "user_authentication", 
-                "secure_sessions", 
-                "persistent_storage",
-                "text_chat", 
-                "voice_room", 
-                "webrtc_voice", 
-                "push_to_talk", 
-                "render_signaling",
-                "user_profiles",
-                "avatar_colors",
-                "message_history"
-            ],
-            "database": "SQLite with user accounts",
-            "uptime": "Running with secure authentication! 🔐💬🎤"
+            "features": ["text_chat", "voice_room", "webrtc_voice", "push_to_talk", "render_signaling"],
+            "uptime": "Running with Render.com signaling! 💬🎤"
         }
         
         self.send_json_response(data)
@@ -1934,18 +1121,18 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(response.encode('utf-8'))
     
     def serve_static_file(self, path):
         """Try to serve static files from current directory"""
+        # Remove leading slash and prevent directory traversal
         file_path = path.lstrip('/')
         if '..' in file_path:
             return False
         
         if os.path.exists(file_path) and os.path.isfile(file_path):
+            # Get MIME type
             mime_type, _ = mimetypes.guess_type(file_path)
             if mime_type is None:
                 mime_type = 'application/octet-stream'
@@ -1973,6 +1160,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         if path.startswith('/api/'):
             self.handle_api(path)
         else:
+            # Default POST handler
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
             
@@ -1983,124 +1171,61 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }
             
             self.send_json_response(response_data)
-    
-    def do_OPTIONS(self):
-        """Handle OPTIONS requests for CORS"""
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.end_headers()
-
-def cleanup_expired_sessions():
-    """Clean up expired sessions periodically"""
-    def cleanup():
-        while True:
-            try:
-                conn = sqlite3.connect('chatroom_users.db')
-                cursor = conn.cursor()
-                cursor.execute('DELETE FROM sessions WHERE expires_at < ?', (datetime.now().isoformat(),))
-                deleted = cursor.rowcount
-                conn.commit()
-                conn.close()
-                
-                if deleted > 0:
-                    print(f"🧹 Cleaned up {deleted} expired sessions")
-                
-                time.sleep(3600)  # Run every hour
-            except Exception as e:
-                print(f"Session cleanup error: {e}")
-                time.sleep(3600)
-    
-    cleanup_thread = threading.Thread(target=cleanup, daemon=True)
-    cleanup_thread.start()
 
 def main():
-    # Initialize database
-    print("🔐 Initializing secure database...")
-    init_database()
-    
-    # Start session cleanup thread
-    cleanup_expired_sessions()
-    
     try:
         with socketserver.TCPServer(("0.0.0.0", PORT), ChatroomHandler) as httpd:
             print("🚀" * 50)
-            print(f"🔐💬🎤 SECURED CHATROOM + VOICE ROOM SERVER STARTED!")
+            print(f"💬🎤 CHATROOM + VOICE ROOM SERVER STARTED!")
             print("🚀" * 50)
             print(f"🌐 Local URL: http://localhost:{PORT}")
             print(f"📡 Signaling Server: https://repo1-ejq1.onrender.com")
             print(f"📂 Directory: {os.getcwd()}")
-            print(f"🗄️ Database: chatroom_users.db")
-            print("\n🔐 AUTHENTICATION FEATURES:")
-            print("   📝 User registration with email validation")
-            print("   🔑 Secure login with password hashing (PBKDF2)")
-            print("   🎫 Session token management (30-day expiry)")
-            print("   👤 User profiles with avatars and display names")
-            print("   📊 Message count tracking per user")
-            print("   🔒 Session verification for all actions")
-            print("   🧹 Automatic expired session cleanup")
-            print("\n✨ CHAT FEATURES:")
-            print("   💬 Real-time authenticated text chatroom")
-            print("   🎨 Personalized user avatars with colors")
-            print("   📝 Display names and user profiles")
-            print("   📊 Message history with user attribution")
-            print("   🔄 Auto-refresh every 2 seconds")
-            print("   😊 Emoji support")
+            print("\n✨ FEATURES:")
+            print("   💬 Real-time text chatroom")
+            print("   🎤 Voice room with WebRTC")
+            print("   📡 Connected to your Render signaling server")
+            print("   👥 Multiple users can chat and talk together")
             print("   📱 Mobile-friendly tabbed interface")
+            print("   🎨 Beautiful UI with animations")
+            print("   😊 Emoji support")
+            print("   🔄 Auto-refresh every 2 seconds")
+            print("   📝 Message history (last 100 messages)")
+            print("   🔇 Mute/unmute functionality")
+            print("   📊 Voice activity indicators")
             print("\n🎤 VOICE FEATURES:")
-            print("   🗣️ Push-to-talk authenticated voice chat")
+            print("   🗣️ Push-to-talk (hold button to speak)")
             print("   📡 Uses your Render.com signaling server")
             print("   🔗 WebRTC peer-to-peer voice connections")
             print("   👥 Real-time participant management")
             print("   🔊 Mute/unmute controls")
             print("   📞 Join/leave voice room")
             print("   🎯 Browser-based (no downloads needed)")
-            print("\n🛡️ SECURITY FEATURES:")
-            print("   🔐 Password hashing with salt (PBKDF2)")
-            print("   🎫 Secure session tokens (32-byte random)")
-            print("   ⏰ Session expiration (30 days)")
-            print("   🗄️ SQLite database for persistent storage")
-            print("   🧹 Automatic cleanup of expired sessions")
-            print("   📊 User activity tracking")
-            print("   🔒 All API endpoints require authentication")
             print("\n🎯 API ENDPOINTS:")
-            print(f"   📝 POST /api/auth/register (Create account)")
-            print(f"   🔑 POST /api/auth/login (User login)")
-            print(f"   ✅ POST /api/auth/verify (Verify session)")
-            print(f"   👋 POST /api/auth/logout (User logout)")
-            print(f"   📤 POST /api/chat/send (Send message - auth required)")
-            print(f"   📥 GET /api/chat/messages (Get messages - auth required)")
+            print(f"   📤 POST /api/chat/send (Send message)")
+            print(f"   📥 GET /api/chat/messages (Get messages)")
             print(f"   📊 GET /api/status (Server status)")
             print("\n💡 USAGE:")
             print("   1. Run this Python script locally")
-            print("   2. Create an account or login with existing credentials")
-            print("   3. Use tunneling to make it public:")
-            print("      npx localtunnel --port 8080 --subdomain mysecurechat")
-            print("   4. Share the tunnel URL with friends")
-            print("   5. All users must create accounts to participate")
-            print("   6. Switch between Text Chat and Voice Room tabs")
-            print("   7. Click 'Join Voice Room' and allow microphone")
-            print("   8. Hold 'Talk' button to speak with others!")
-            print("\n⚠️  IMPORTANT NOTES:")
-            print("   • All users must register/login to use the chatroom")
-            print("   • User data is stored in SQLite database (chatroom_users.db)")
-            print("   • Sessions expire after 30 days of inactivity")
+            print("   2. Use tunneling to make it public:")
+            print("      npx localtunnel --port 8080 --subdomain myvoicechat")
+            print("   3. Share the tunnel URL with friends")
+            print("   4. Switch between Text Chat and Voice Room tabs")
+            print("   5. Click 'Join Voice Room' and allow microphone")
+            print("   6. Hold 'Talk' button to speak with others!")
+            print("\n⚠️  VOICE ROOM NOTES:")
             print("   • Voice signaling goes through your Render server")
             print("   • Audio is peer-to-peer (no audio through server)")
             print("   • Works best in Chrome/Edge browsers")
             print("   • Allow microphone permissions when prompted")
-            print("\n🗄️ DATABASE TABLES:")
-            print("   👥 users: User accounts, profiles, and settings")
-            print("   🎫 sessions: Active user sessions and tokens")
-            print("   💬 Messages stored in memory (last 100 messages)")
+            print("   • Voice notifications appear in text chat")
             print("\n🛑 Press Ctrl+C to stop the server")
             print("=" * 50)
             
             httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\n🛑 Secured Chatroom server stopped by user")
-        print("👋 Thanks for using the authenticated chatroom!")
+        print("\n🛑 Chatroom + Voice Room server stopped by user")
+        print("👋 Thanks for using the chatroom with Render voice signaling!")
     except Exception as e:
         print(f"❌ Server error: {e}")
 
