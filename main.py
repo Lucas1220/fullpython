@@ -1390,7 +1390,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }});
             
             if (Math.abs(container.scrollTop + container.clientHeight - container.scrollHeight) < 100) {
-                container.scrollTop = container.scrollHeight;
             }
         }}
         
