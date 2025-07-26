@@ -1247,13 +1247,13 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             socket.on('user-joined', (data) => {{
                 console.log('User joined:', data.username);
                 createPeerConnection(data.userId);
-                updateVoiceNotification(`🎤 ${data.username} joined voice room`);
+                updateVoiceNotification(`🎤 ${{data.username}} joined voice room`);
             }});
             
             socket.on('user-left', (data) => {{
                 console.log('User left:', data.username);
                 closePeerConnection(data.userId);
-                updateVoiceNotification(`📞 ${data.username} left voice room`);
+                updateVoiceNotification(`📞 ${{data.username}} left voice room`);
             }});
             
             socket.on('offer', async (data) => {{
@@ -1336,7 +1336,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         }}
         
         function loadMessages() {{
-            fetch(`/api/chat/messages?since=${lastMessageId}`)
+            fetch(`/api/chat/messages?since=${{lastMessageId}}`)
                 .then(response => response.json())
                 .then(data => {{
                     if (data.error === 'Not authenticated') {{
@@ -1363,7 +1363,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }}
             
             messages.forEach(message => {{
-                const existingMessage = document.getElementById(`message-${message.id}`);
+                const existingMessage = document.getElementById(`message-${{message.id}}`);
                 if (existingMessage) {{
                     return;
                 }}
@@ -1374,16 +1374,16 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 if (message.text.includes('🎤') || message.text.includes('🗣️') || message.text.includes('📞')) messageClass += ' voice';
                 
                 messageDiv.className = messageClass;
-                messageDiv.id = `message-${message.id}`;
+                messageDiv.id = `message-${{message.id}}`;
                 
                 const timestamp = new Date(message.timestamp).toLocaleTimeString();
                 
                 messageDiv.innerHTML = `
                     <div class="message-header">
-                        <span class="username">${escapeHtml(message.username)}</span>
-                        <span class="timestamp">${timestamp}</span>
+                        <span class="username">${{escapeHtml(message.username)}}</span>
+                        <span class="timestamp">${{timestamp}}</span>
                     </div>
-                    <div class="message-text">${escapeHtml(message.text)}</div>
+                    <div class="message-text">${{escapeHtml(message.text)}}</div>
                 `;
                 
                 container.appendChild(messageDiv);
@@ -1396,7 +1396,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         
         function updateOnlineCount(messageCount) {{
             const onlineCount = document.getElementById('onlineCount');
-            onlineCount.textContent = `💬 ${messageCount} messages`;
+            onlineCount.textContent = `💬 ${{messageCount}} messages`;
         }}
         
         function escapeHtml(text) {{
@@ -1448,7 +1448,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('leaveVoiceBtn').style.display = 'inline-flex';
                 document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
                 
-                updateVoiceNotification(`🎤 ${currentUser} joined the voice room`);
+                updateVoiceNotification(`🎤 ${{currentUser}} joined the voice room`);
                 
             }} catch (error) {{
                 console.error('Error accessing microphone:', error);
@@ -1477,7 +1477,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('leaveVoiceBtn').style.display = 'none';
             document.getElementById('voiceStatus').innerHTML = '🎤 Click "Join Voice Room" to start talking with others!';
             
-            updateVoiceNotification(`📞 ${currentUser} left the voice room`);
+            updateVoiceNotification(`📞 ${{currentUser}} left the voice room`);
             updateParticipantsList();
         }}
         
@@ -1581,7 +1581,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 peerConnections.delete(userId);
             }}
             
-            const audioElement = document.getElementById(`audio-${userId}`);
+            const audioElement = document.getElementById(`audio-${{userId}}`);
             if (audioElement) {{
                 audioElement.remove();
             }}
@@ -1591,11 +1591,11 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             const audio = document.createElement('audio');
             audio.srcObject = stream;
             audio.autoplay = true;
-            audio.id = `audio-${userId}`;
+            audio.id = `audio-${{userId}}`;
             audio.volume = 1.0;
             
             document.body.appendChild(audio);
-            console.log(`Playing audio from user: ${userId}`);
+            console.log(`Playing audio from user: ${{userId}}`);
         }}
         
         function startTalking() {{
@@ -1667,24 +1667,24 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             participantList.innerHTML = `
                 <div class="participant" id="myParticipant">
                     <span>🎤</span>
-                    <span>You (${currentUser})</span>
+                    <span>You (${{currentUser}})</span>
                 </div>
             `;
             
             peerConnections.forEach((pc, userId) => {{
                 const participant = document.createElement('div');
                 participant.className = 'participant';
-                participant.id = `participant-${userId}`;
+                participant.id = `participant-${{userId}}`;
                 participant.innerHTML = `
                     <span>🔊</span>
-                    <span>User ${userId.substring(0, 8)}...</span>
+                    <span>User ${{userId.substring(0, 8)}}...</span>
                 `;
                 participantList.appendChild(participant);
             }});
         }}
         
         function updateUserVoiceActivity(userId, isActive) {{
-            const participant = document.getElementById(`participant-${userId}`);
+            const participant = document.getElementById(`participant-${{userId}}`);
             if (participant) {{
                 if (isActive) {{
                     participant.classList.add('speaking');
