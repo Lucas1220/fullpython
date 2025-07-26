@@ -726,21 +726,21 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     <title>Chatroom + Voice Room 🎤💬</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        * {{
+        * {{{{
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-        }}
+        }}}}
         
-        body {{
+        body {{{{
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             height: 100vh;
             display: flex;
             flex-direction: column;
-        }}
+        }}}}
         
-        .header {{
+        .header {{{{
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             padding: 20px;
@@ -748,31 +748,31 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             color: white;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             position: relative;
-        }}
+        }}}}
         
-        .header h1 {{
+        .header h1 {{{{
             font-size: 2em;
             margin-bottom: 10px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }}
+        }}}}
         
-        .user-info {{
+        .user-info {{{{
             position: absolute;
             top: 20px;
             right: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
-        }}
+        }}}}
         
-        .username-display {{
+        .username-display {{{{
             background: rgba(255, 255, 255, 0.2);
             padding: 8px 15px;
             border-radius: 20px;
             font-weight: bold;
-        }}
+        }}}}
         
-        .logout-btn {{
+        .logout-btn {{{{
             background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
@@ -781,20 +781,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             cursor: pointer;
             font-weight: bold;
             transition: all 0.3s ease;
-        }}
+        }}}}
         
-        .logout-btn:hover {{
+        .logout-btn:hover {{{{
             background: rgba(255, 255, 255, 0.3);
-        }}
+        }}}}
         
-        .tabs {{
+        .tabs {{{{
             display: flex;
             justify-content: center;
             gap: 10px;
             margin-top: 10px;
-        }}
+        }}}}
         
-        .tab-btn {{
+        .tab-btn {{{{
             background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
@@ -804,27 +804,27 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             font-weight: bold;
             transition: all 0.3s ease;
             backdrop-filter: blur(5px);
-        }}
+        }}}}
         
-        .tab-btn.active {{
+        .tab-btn.active {{{{
             background: rgba(255, 255, 255, 0.3);
             transform: scale(1.05);
-        }}
+        }}}}
         
-        .tab-btn:hover {{
+        .tab-btn:hover {{{{
             background: rgba(255, 255, 255, 0.25);
-        }}
+        }}}}
         
-        .online-count {{
+        .online-count {{{{
             background: rgba(76, 175, 80, 0.8);
             padding: 5px 15px;
             border-radius: 20px;
             display: inline-block;
             font-size: 0.9em;
             margin-top: 10px;
-        }}
+        }}}}
         
-        .main-container {{
+        .main-container {{{{
             flex: 1;
             display: flex;
             flex-direction: column;
@@ -832,26 +832,26 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             margin: 0 auto;
             width: 100%;
             padding: 20px;
-        }}
+        }}}}
         
-        .tab-content {{
+        .tab-content {{{{
             display: none;
             flex: 1;
             animation: fadeIn 0.3s ease-in;
-        }}
+        }}}}
         
-        .tab-content.active {{
+        .tab-content.active {{{{
             display: flex;
             flex-direction: column;
-        }}
+        }}}}
         
-        @keyframes fadeIn {{
-            from {{ opacity: 0; transform: translateY(10px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
+        @keyframes fadeIn {{{{
+            from {{{{ opacity: 0; transform: translateY(10px); }}}}
+            to {{{{ opacity: 1; transform: translateY(0); }}}}
+        }}}}
         
         /* Chat Room Styles */
-        .messages-container {{
+        .messages-container {{{{
             flex: 1;
             background: rgba(255, 255, 255, 0.95);
             border-radius: 15px 15px 0 0;
@@ -859,71 +859,71 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             overflow-y: auto;
             max-height: 400px;
             margin-bottom: 0;
-        }}
+        }}}}
         
-        .message {{
+        .message {{{{
             margin-bottom: 15px;
             padding: 12px 15px;
             border-radius: 10px;
             background: #f8f9fa;
             border-left: 4px solid #667eea;
             animation: slideIn 0.3s ease-out;
-        }}
+        }}}}
         
-        .message.own {{
+        .message.own {{{{
             background: #e3f2fd;
             border-left-color: #2196F3;
             margin-left: 50px;
-        }}
+        }}}}
         
-        .message.voice {{
+        .message.voice {{{{
             background: #fff3e0;
             border-left-color: #ff9800;
-        }}
+        }}}}
         
-        .message-header {{
+        .message-header {{{{
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 5px;
             font-size: 0.9em;
-        }}
+        }}}}
         
-        .username {{
+        .username {{{{
             font-weight: bold;
             color: #667eea;
-        }}
+        }}}}
         
-        .timestamp {{
+        .timestamp {{{{
             color: #666;
             font-size: 0.8em;
-        }}
+        }}}}
         
-        .message-text {{
+        .message-text {{{{
             color: #333;
             line-height: 1.4;
             word-wrap: break-word;
-        }}
+        }}}}
         
-        .input-container {{
+        .input-container {{{{
             background: rgba(255, 255, 255, 0.95);
             padding: 20px;
             border-radius: 0 0 15px 15px;
             display: flex;
             gap: 10px;
             align-items: center;
-        }}
+        }}}}
         
-        #messageInput {{
+        #messageInput {{{{
             flex: 1;
             padding: 12px;
             border: 2px solid #ddd;
             border-radius: 8px;
             font-size: 14px;
             resize: none;
-        }}
+        }}}}
         
-        #sendButton {{
+        #sendButton {{{{
             background: #667eea;
             color: white;
             border: none;
@@ -933,32 +933,32 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             font-size: 14px;
             font-weight: bold;
             transition: all 0.3s ease;
-        }}
+        }}}}
         
-        #sendButton:hover {{
+        #sendButton:hover {{{{
             background: #5a6fd8;
             transform: translateY(-1px);
-        }}
+        }}}}
         
-        .no-messages {{
+        .no-messages {{{{
             text-align: center;
             color: #666;
             font-style: italic;
             padding: 40px;
-        }}
+        }}}}
         
-        @keyframes slideIn {{
-            from {{
+        @keyframes slideIn {{{{
+            from {{{{
                 opacity: 0;
                 transform: translateY(20px);
-            }}
-            to {{
+            }}}}
+            to {{{{
                 opacity: 1;
                 transform: translateY(0);
-            }}
-        }}
+            }}}}
+        }}}}
         
-        .emoji-btn {{
+        .emoji-btn {{{{
             background: none;
             border: none;
             font-size: 18px;
@@ -966,14 +966,14 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             padding: 5px;
             border-radius: 3px;
             transition: background 0.2s;
-        }}
+        }}}}
         
-        .emoji-btn:hover {{
+        .emoji-btn:hover {{{{
             background: rgba(0,0,0,0.1);
-        }}
+        }}}}
         
         /* Voice Room Styles */
-        .voice-container {{
+        .voice-container {{{{
             background: rgba(255, 255, 255, 0.95);
             border-radius: 15px;
             padding: 30px;
@@ -984,17 +984,17 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             justify-content: center;
             align-items: center;
             gap: 20px;
-        }}
+        }}}}
         
-        .voice-controls {{
+        .voice-controls {{{{
             display: flex;
             gap: 15px;
             align-items: center;
             flex-wrap: wrap;
             justify-content: center;
-        }}
+        }}}}
         
-        .voice-btn {{
+        .voice-btn {{{{
             background: #4CAF50;
             color: white;
             border: none;
@@ -1009,30 +1009,30 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             align-items: center;
             justify-content: center;
             gap: 8px;
-        }}
+        }}}}
         
-        .voice-btn:hover {{
+        .voice-btn:hover {{{{
             transform: translateY(-2px);
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }}
+        }}}}
         
-        .voice-btn.recording {{
+        .voice-btn.recording {{{{
             background: #f44336;
             animation: pulse 1.5s infinite;
-        }}
+        }}}}
         
-        .voice-btn.disabled {{
+        .voice-btn.disabled {{{{
             background: #ccc;
             cursor: not-allowed;
-        }}
+        }}}}
         
-        @keyframes pulse {{
-            0% {{ transform: scale(1); }}
-            50% {{ transform: scale(1.05); }}
-            100% {{ transform: scale(1); }}
-        }}
+        @keyframes pulse {{{{
+            0% {{{{ transform: scale(1); }}}}
+            50% {{{{ transform: scale(1.05); }}}}
+            100% {{{{ transform: scale(1); }}}}
+        }}}}
         
-        .voice-status {{
+        .voice-status {{{{
             background: rgba(0,0,0,0.05);
             padding: 15px 25px;
             border-radius: 10px;
@@ -1042,30 +1042,30 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             display: flex;
             align-items: center;
             justify-content: center;
-        }}
+        }}}}
         
-        .voice-participants {{
+        .voice-participants {{{{
             background: rgba(0,0,0,0.05);
             padding: 20px;
             border-radius: 10px;
             margin-top: 20px;
             width: 100%;
             max-width: 500px;
-        }}
+        }}}}
         
-        .voice-participants h3 {{
+        .voice-participants h3 {{{{
             margin-bottom: 15px;
             color: #333;
-        }}
+        }}}}
         
-        .participant-list {{
+        .participant-list {{{{
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             justify-content: center;
-        }}
+        }}}}
         
-        .participant {{
+        .participant {{{{
             background: #667eea;
             color: white;
             padding: 8px 15px;
@@ -1074,58 +1074,58 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             display: flex;
             align-items: center;
             gap: 5px;
-        }}
+        }}}}
         
-        .participant.speaking {{
+        .participant.speaking {{{{
             animation: speakingGlow 1s infinite alternate;
-        }}
+        }}}}
         
-        @keyframes speakingGlow {{
-            from {{ box-shadow: 0 0 5px rgba(102, 126, 234, 0.5); }}
-            to {{ box-shadow: 0 0 15px rgba(102, 126, 234, 0.8); }}
-        }}
+        @keyframes speakingGlow {{{{
+            from {{{{ box-shadow: 0 0 5px rgba(102, 126, 234, 0.5); }}}}
+            to {{{{ box-shadow: 0 0 15px rgba(102, 126, 234, 0.8); }}}}
+        }}}}
         
-        .connection-status {{
+        .connection-status {{{{
             background: rgba(255, 193, 7, 0.1);
             border: 2px solid rgba(255, 193, 7, 0.3);
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 20px;
             color: #333;
-        }}
+        }}}}
         
-        .connection-status.connected {{
+        .connection-status.connected {{{{
             background: rgba(76, 175, 80, 0.1);
             border-color: rgba(76, 175, 80, 0.3);
-        }}
+        }}}}
         
-        @media (max-width: 600px) {{
-            .input-container {{
+        @media (max-width: 600px) {{{{
+            .input-container {{{{
                 flex-direction: column;
                 gap: 10px;
-            }}
+            }}}}
             
-            .voice-controls {{
+            .voice-controls {{{{
                 flex-direction: column;
-            }}
+            }}}}
             
-            .voice-btn {{
+            .voice-btn {{{{
                 width: 100%;
                 max-width: 250px;
-            }}
+            }}}}
             
-            .user-info {{
+            .user-info {{{{
                 position: static;
                 justify-content: center;
                 margin-bottom: 10px;
-            }}
-        }}
+            }}}}
+        }}}}
     </style>
 </head>
 <body>
     <div class="header">
         <div class="user-info">
-            <div class="username-display">👤 {username}</div>
+            <div class="username-display">👤 {{username}}</div>
             <button class="logout-btn" onclick="logout()">🚪 Logout</button>
         </div>
         <h1>🎤💬 Chatroom + Voice Room</h1>
@@ -1192,7 +1192,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     </div>
 
     <script>
-        let currentUser = '{username}';
+        let currentUser = '{{username}}';
         let lastMessageId = 0;
         
         // Voice variables
@@ -1208,165 +1208,165 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         const SIGNALING_SERVER = 'https://repo1-ejq1.onrender.com';
         
         // Authentication function
-        async function logout() {{
-            try {{
-                await fetch('/api/auth/logout', {{ method: 'POST' }});
+        async function logout() {{{{
+            try {{{{
+                await fetch('/api/auth/logout', {{{{ method: 'POST' }}}});
                 document.cookie = 'session_id=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
                 window.location.href = '/';
-            }} catch (error) {{
+            }}}} catch (error) {{{{
                 console.error('Logout error:', error);
                 window.location.href = '/';
-            }}
-        }}
+            }}}}
+        }}}}
         
         // Tab switching
-        function switchTab(tabName) {{
+        function switchTab(tabName) {{{{
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(tabName + 'Tab').classList.add('active');
-        }}
+        }}}}
         
         // Initialize Socket.IO connection
-        function initializeVoiceConnection() {{
+        function initializeVoiceConnection() {{{{
             socket = io(SIGNALING_SERVER);
             
-            socket.on('connect', () => {{
+            socket.on('connect', () => {{{{
                 console.log('Connected to voice server!');
                 document.getElementById('connectionStatus').innerHTML = '🟢 Connected to voice server';
                 document.getElementById('connectionStatus').classList.add('connected');
-            }});
+            }}}});
             
-            socket.on('disconnect', () => {{
+            socket.on('disconnect', () => {{{{
                 console.log('Disconnected from voice server');
                 document.getElementById('connectionStatus').innerHTML = '🔴 Disconnected from voice server';
                 document.getElementById('connectionStatus').classList.remove('connected');
-            }});
+            }}}});
             
-            socket.on('user-joined', (data) => {{
+            socket.on('user-joined', (data) => {{{{
                 console.log('User joined:', data.username);
                 createPeerConnection(data.userId);
-                updateVoiceNotification(`🎤 ${{data.username}} joined voice room`);
-            }});
+                updateVoiceNotification(`🎤 ${{{{data.username}}}} joined voice room`);
+            }}}});
             
-            socket.on('user-left', (data) => {{
+            socket.on('user-left', (data) => {{{{
                 console.log('User left:', data.username);
                 closePeerConnection(data.userId);
-                updateVoiceNotification(`📞 ${{data.username}} left voice room`);
-            }});
+                updateVoiceNotification(`📞 ${{{{data.username}}}} left voice room`);
+            }}}});
             
-            socket.on('offer', async (data) => {{
+            socket.on('offer', async (data) => {{{{
                 console.log('Received offer from:', data.from);
                 await handleOffer(data.offer, data.from);
-            }});
+            }}}});
             
-            socket.on('answer', async (data) => {{
+            socket.on('answer', async (data) => {{{{
                 console.log('Received answer from:', data.from);
                 await handleAnswer(data.answer, data.from);
-            }});
+            }}}});
             
-            socket.on('ice-candidate', async (data) => {{
+            socket.on('ice-candidate', async (data) => {{{{
                 console.log('Received ICE candidate from:', data.from);
                 await handleIceCandidate(data.candidate, data.from);
-            }});
+            }}}});
             
-            socket.on('room-stats', (data) => {{
+            socket.on('room-stats', (data) => {{{{
                 document.getElementById('participantCount').textContent = data.userCount;
                 updateParticipantsList();
-            }});
+            }}}});
             
-            socket.on('user-voice-activity', (data) => {{
+            socket.on('user-voice-activity', (data) => {{{{
                 updateUserVoiceActivity(data.userId, data.isActive);
-            }});
-        }}
+            }}}});
+        }}}}
         
         // Chat functionality
         const messageInput = document.getElementById('messageInput');
-        messageInput.addEventListener('input', function() {{
+        messageInput.addEventListener('input', function() {{{{
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 100) + 'px';
-        }});
+        }}}});
         
-        messageInput.addEventListener('keydown', function(e) {{
-            if (e.key === 'Enter' && !e.shiftKey) {{
+        messageInput.addEventListener('keydown', function(e) {{{{
+            if (e.key === 'Enter' && !e.shiftKey) {{{{
                 e.preventDefault();
                 sendMessage();
-            }}
-        }});
+            }}}}
+        }}}});
         
-        function addEmoji(emoji) {{
+        function addEmoji(emoji) {{{{
             const input = document.getElementById('messageInput');
             input.value += emoji;
             input.focus();
-        }}
+        }}}}
         
-        function sendMessage() {{
+        function sendMessage() {{{{
             const messageText = messageInput.value.trim();
             if (!messageText) return;
             
-            const message = {{
+            const message = {{{{
                 text: messageText,
                 timestamp: new Date().toISOString()
-            }};
+            }}}};
             
-            fetch('/api/chat/send', {{
+            fetch('/api/chat/send', {{{{
                 method: 'POST',
-                headers: {{
+                headers: {{{{
                     'Content-Type': 'application/json',
-                }},
+                }}}},
                 body: JSON.stringify(message)
-            }})
+            }}}})
             .then(response => response.json())
-            .then(data => {{
-                if (data.success) {{
+            .then(data => {{{{
+                if (data.success) {{{{
                     messageInput.value = '';
                     messageInput.style.height = 'auto';
-                    if (data.messageId) {{
+                    if (data.messageId) {{{{
                         lastMessageId = data.messageId;
-                    }}
-                }} else if (data.error === 'Not authenticated') {{
+                    }}}}
+                }}}} else if (data.error === 'Not authenticated') {{{{
                     alert('Session expired. Please login again.');
                     window.location.href = '/';
-                }}
-            }})
-            .catch(error => {{
+                }}}}
+            }}}})
+            .catch(error => {{{{
                 console.error('Error sending message:', error);
-            }});
-        }}
+            }}}});
+        }}}}
         
-        function loadMessages() {{
-            fetch(`/api/chat/messages?since=${{lastMessageId}}`)
+        function loadMessages() {{{{
+            fetch(`/api/chat/messages?since=${{{{lastMessageId}}}}`)
                 .then(response => response.json())
-                .then(data => {{
-                    if (data.error === 'Not authenticated') {{
+                .then(data => {{{{
+                    if (data.error === 'Not authenticated') {{{{
                         window.location.href = '/';
                         return;
-                    }}
-                    if (data.messages && data.messages.length > 0) {{
+                    }}}}
+                    if (data.messages && data.messages.length > 0) {{{{
                         displayMessages(data.messages);
                         lastMessageId = data.lastId;
-                    }}
+                    }}}}
                     updateOnlineCount(data.messageCount || 0);
-                }})
-                .catch(error => {{
+                }}}})
+                .catch(error => {{{{
                     console.error('Error loading messages:', error);
-                }});
-        }}
+                }}}});
+        }}}}
         
-        function displayMessages(messages) {{
+        function displayMessages(messages) {{{{
             const container = document.getElementById('messagesContainer');
             const noMessages = container.querySelector('.no-messages');
             
-            if (noMessages && messages.length > 0) {{
+            if (noMessages && messages.length > 0) {{{{
                 noMessages.remove();
-            }}
+            }}}}
             
-            messages.forEach(message => {{
-                const existingMessage = document.getElementById(`message-${{message.id}}`);
-                if (existingMessage) {{
+            messages.forEach(message => {{{{
+                const existingMessage = document.getElementById(`message-${{{{message.id}}}}`);
+                if (existingMessage) {{{{
                     return;
-                }}
+                }}}}
                 
                 const messageDiv = document.createElement('div');
                 let messageClass = 'message';
@@ -1374,73 +1374,73 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 if (message.text.includes('🎤') || message.text.includes('🗣️') || message.text.includes('📞')) messageClass += ' voice';
                 
                 messageDiv.className = messageClass;
-                messageDiv.id = `message-${{message.id}}`;
+                messageDiv.id = `message-${{{{message.id}}}}`;
                 
                 const timestamp = new Date(message.timestamp).toLocaleTimeString();
                 
                 messageDiv.innerHTML = `
                     <div class="message-header">
-                        <span class="username">${{escapeHtml(message.username)}}</span>
-                        <span class="timestamp">${{timestamp}}</span>
+                        <span class="username">${{{{escapeHtml(message.username)}}}}</span>
+                        <span class="timestamp">${{{{timestamp}}}}</span>
                     </div>
-                    <div class="message-text">${{escapeHtml(message.text)}}</div>
+                    <div class="message-text">${{{{escapeHtml(message.text)}}}}</div>
                 `;
                 
                 container.appendChild(messageDiv);
-            }});
+            }}}});
             
-            if (Math.abs(container.scrollTop + container.clientHeight - container.scrollHeight) < 100) {
+            if (Math.abs(container.scrollTop + container.clientHeight - container.scrollHeight) < 100) {{
                 container.scrollTop = container.scrollHeight;
-            }
-        }}
+            }}
+        }}}}
         
-        function updateOnlineCount(messageCount) {{
+        function updateOnlineCount(messageCount) {{{{
             const onlineCount = document.getElementById('onlineCount');
-            onlineCount.textContent = `💬 ${{messageCount}} messages`;
-        }}
+            onlineCount.textContent = `💬 ${{{{messageCount}}}} messages`;
+        }}}}
         
-        function escapeHtml(text) {{
+        function escapeHtml(text) {{{{
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }}
+        }}}}
         
-        function updateVoiceNotification(text) {{
-            const message = {{
+        function updateVoiceNotification(text) {{{{
+            const message = {{{{
                 text: text,
                 timestamp: new Date().toISOString()
-            }};
+            }}}};
             
-            fetch('/api/chat/send', {{
+            fetch('/api/chat/send', {{{{
                 method: 'POST',
-                headers: {{
+                headers: {{{{
                     'Content-Type': 'application/json',
-                }},
+                }}}},
                 body: JSON.stringify(message)
-            }});
-        }}
+            }}}});
+        }}}}
         
         // Voice Room functionality (same as before)
-        async function joinVoiceRoom() {{
-            try {{
-                localStream = await navigator.mediaDevices.getUserMedia({{
-                    audio: {{
+        async function joinVoiceRoom() {{{{
+            try {{{{
+                localStream = await navigator.mediaDevices.getUserMedia({{{{
+                    audio: {{{{
                         echoCancellation: true,
                         noiseSuppression: true,
                         sampleRate: 44100
-                    }}
-                }});
+                    }}}}
+                }}}});
                 
-                localStream.getAudioTracks().forEach(track => {{
+                localStream.getAudioTracks().forEach(track => {{{{
                     track.enabled = false;
-                }});
+                }}}});
                 
                 isInVoiceRoom = true;
                 
-                socket.emit('join-room', {{
+                socket.emit('join-room', {{{{
                     roomId: roomId,
                     username: currentUser
-                }});
+                }}}});
                 
                 document.getElementById('joinVoiceBtn').style.display = 'none';
                 document.getElementById('talkBtn').classList.remove('disabled');
@@ -1448,23 +1448,23 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 document.getElementById('leaveVoiceBtn').style.display = 'inline-flex';
                 document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
                 
-                updateVoiceNotification(`🎤 ${{currentUser}} joined the voice room`);
+                updateVoiceNotification(`🎤 ${{{{currentUser}}}} joined the voice room`);
                 
-            }} catch (error) {{
+            }}}} catch (error) {{{{
                 console.error('Error accessing microphone:', error);
                 document.getElementById('voiceStatus').innerHTML = '❌ Microphone access denied. Please allow microphone and try again.';
-            }}
-        }}
+            }}}}
+        }}}}
         
-        function leaveVoiceRoom() {{
-            if (localStream) {{
+        function leaveVoiceRoom() {{{{
+            if (localStream) {{{{
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
-            }}
+            }}}}
             
-            peerConnections.forEach((pc, userId) => {{
+            peerConnections.forEach((pc, userId) => {{{{
                 pc.close();
-            }});
+            }}}});
             peerConnections.clear();
             
             isInVoiceRoom = false;
@@ -1477,76 +1477,76 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById('leaveVoiceBtn').style.display = 'none';
             document.getElementById('voiceStatus').innerHTML = '🎤 Click "Join Voice Room" to start talking with others!';
             
-            updateVoiceNotification(`📞 ${{currentUser}} left the voice room`);
+            updateVoiceNotification(`📞 ${{{{currentUser}}}} left the voice room`);
             updateParticipantsList();
-        }}
+        }}}}
         
-        async function createPeerConnection(userId) {{
-            const peerConnection = new RTCPeerConnection({{
+        async function createPeerConnection(userId) {{{{
+            const peerConnection = new RTCPeerConnection({{{{
                 iceServers: [
-                    {{ urls: 'stun:stun.l.google.com:19302' }},
-                    {{ urls: 'stun:global.stun.twilio.com:3478' }}
+                    {{{{ urls: 'stun:stun.l.google.com:19302' }}}},
+                    {{{{ urls: 'stun:global.stun.twilio.com:3478' }}}}
                 ]
-            }});
+            }}}});
             
-            if (localStream) {{
-                localStream.getTracks().forEach(track => {{
+            if (localStream) {{{{
+                localStream.getTracks().forEach(track => {{{{
                     peerConnection.addTrack(track, localStream);
-                }});
-            }}
+                }}}});
+            }}}}
             
-            peerConnection.ontrack = (event) => {{
+            peerConnection.ontrack = (event) => {{{{
                 const remoteStream = event.streams[0];
                 playRemoteAudio(remoteStream, userId);
-            }};
+            }}}};
             
-            peerConnection.onicecandidate = (event) => {{
-                if (event.candidate) {{
-                    socket.emit('ice-candidate', {{
+            peerConnection.onicecandidate = (event) => {{{{
+                if (event.candidate) {{{{
+                    socket.emit('ice-candidate', {{{{
                         target: userId,
                         candidate: event.candidate
-                    }});
-                }}
-            }};
+                    }}}});
+                }}}}
+            }}}};
             
             peerConnections.set(userId, peerConnection);
             
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
             
-            socket.emit('offer', {{
+            socket.emit('offer', {{{{
                 target: userId,
                 offer: offer
-            }});
-        }}
+            }}}});
+        }}}}
         
-        async function handleOffer(offer, fromUserId) {{
-            const peerConnection = new RTCPeerConnection({{
+        async function handleOffer(offer, fromUserId) {{{{
+            const peerConnection = new RTCPeerConnection({{{{
                 iceServers: [
-                    {{ urls: 'stun:stun.l.google.com:19302' }},
-                    {{ urls: 'stun:global.stun.twilio.com:3478' }}
+                    {{{{ urls: 'stun:stun.l.google.com:19302' }}}},
+                    {{{{ urls: 'stun:global.stun.twilio.com:3478' }}}}
                 ]
-            }});
+            }}}});
             
-            if (localStream) {{
-                localStream.getTracks().forEach(track => {{
+            if (localStream) {{{{
+                localStream.getTracks().forEach(track => {{{{
                     peerConnection.addTrack(track, localStream);
-                }});
-            }}
+                }}}});
+            }}}}
             
-            peerConnection.ontrack = (event) => {{
+            peerConnection.ontrack = (event) => {{{{
                 const remoteStream = event.streams[0];
                 playRemoteAudio(remoteStream, fromUserId);
-            }};
+            }}}};
             
-            peerConnection.onicecandidate = (event) => {{
-                if (event.candidate) {{
-                    socket.emit('ice-candidate', {{
+            peerConnection.onicecandidate = (event) => {{{{
+                if (event.candidate) {{{{
+                    socket.emit('ice-candidate', {{{{
                         target: fromUserId,
                         candidate: event.candidate
-                    }});
-                }}
-            }};
+                    }}}});
+                }}}}
+            }}}};
             
             peerConnections.set(fromUserId, peerConnection);
             
@@ -1554,107 +1554,107 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             
-            socket.emit('answer', {{
+            socket.emit('answer', {{{{
                 target: fromUserId,
                 answer: answer
-            }});
-        }}
+            }}}});
+        }}}}
         
-        async function handleAnswer(answer, fromUserId) {{
+        async function handleAnswer(answer, fromUserId) {{{{
             const peerConnection = peerConnections.get(fromUserId);
-            if (peerConnection) {{
+            if (peerConnection) {{{{
                 await peerConnection.setRemoteDescription(answer);
-            }}
-        }}
+            }}}}
+        }}}}
         
-        async function handleIceCandidate(candidate, fromUserId) {{
+        async function handleIceCandidate(candidate, fromUserId) {{{{
             const peerConnection = peerConnections.get(fromUserId);
-            if (peerConnection) {{
+            if (peerConnection) {{{{
                 await peerConnection.addIceCandidate(candidate);
-            }}
-        }}
+            }}}}
+        }}}}
         
-        function closePeerConnection(userId) {{
+        function closePeerConnection(userId) {{{{
             const peerConnection = peerConnections.get(userId);
-            if (peerConnection) {{
+            if (peerConnection) {{{{
                 peerConnection.close();
                 peerConnections.delete(userId);
-            }}
+            }}}}
             
-            const audioElement = document.getElementById(`audio-${{userId}}`);
-            if (audioElement) {{
+            const audioElement = document.getElementById(`audio-${{{{userId}}}}`);
+            if (audioElement) {{{{
                 audioElement.remove();
-            }}
-        }}
+            }}}}
+        }}}}
         
-        function playRemoteAudio(stream, userId) {{
+        function playRemoteAudio(stream, userId) {{{{
             const audio = document.createElement('audio');
             audio.srcObject = stream;
             audio.autoplay = true;
-            audio.id = `audio-${{userId}}`;
+            audio.id = `audio-${{{{userId}}}}`;
             audio.volume = 1.0;
             
             document.body.appendChild(audio);
-            console.log(`Playing audio from user: ${{userId}}`);
-        }}
+            console.log(`Playing audio from user: ${{{{userId}}}}`);
+        }}}}
         
-        function startTalking() {{
+        function startTalking() {{{{
             if (!isInVoiceRoom || isMuted || isTalking || !localStream) return;
             
             isTalking = true;
             
-            localStream.getAudioTracks().forEach(track => {{
+            localStream.getAudioTracks().forEach(track => {{{{
                 track.enabled = true;
-            }});
+            }}}});
             
             document.getElementById('talkBtn').classList.add('recording');
             document.getElementById('voiceStatus').innerHTML = '🔴 Talking... Release button to stop';
             
-            socket.emit('voice-activity', {{ isActive: true }});
-        }}
+            socket.emit('voice-activity', {{{{ isActive: true }}}});
+        }}}}
         
-        function stopTalking() {{
+        function stopTalking() {{{{
             if (!isTalking || !localStream) return;
             
             isTalking = false;
             
-            localStream.getAudioTracks().forEach(track => {{
+            localStream.getAudioTracks().forEach(track => {{{{
                 track.enabled = false;
-            }});
+            }}}});
             
             document.getElementById('talkBtn').classList.remove('recording');
             document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
             
-            socket.emit('voice-activity', {{ isActive: false }});
-        }}
+            socket.emit('voice-activity', {{{{ isActive: false }}}});
+        }}}}
         
-        function toggleMute() {{
+        function toggleMute() {{{{
             isMuted = !isMuted;
             const muteBtn = document.getElementById('muteBtn');
             
-            if (isMuted) {{
+            if (isMuted) {{{{
                 muteBtn.innerHTML = '🔇 Unmute';
                 muteBtn.style.background = '#f44336';
                 document.getElementById('voiceStatus').innerHTML = '🔇 Microphone muted';
                 
-                if (localStream) {{
+                if (localStream) {{{{
                     localStream.getAudioTracks().forEach(track => track.enabled = false);
-                }}
-            }} else {{
+                }}}}
+            }}}} else {{{{
                 muteBtn.innerHTML = '🔊 Mute';
                 muteBtn.style.background = '#ff9800';
                 document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
                 
-                if (localStream && !isTalking) {{
+                if (localStream && !isTalking) {{{{
                     localStream.getAudioTracks().forEach(track => track.enabled = false);
-                }}
-            }}
-        }}
+                }}}}
+            }}}}
+        }}}}
         
-        function updateParticipantsList() {{
+        function updateParticipantsList() {{{{
             const participantList = document.getElementById('participantList');
             
-            if (!isInVoiceRoom) {{
+            if (!isInVoiceRoom) {{{{
                 participantList.innerHTML = `
                     <div class="participant">
                         <span>💤</span>
@@ -1662,42 +1662,42 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                     </div>
                 `;
                 return;
-            }}
+            }}}}
             
             participantList.innerHTML = `
                 <div class="participant" id="myParticipant">
                     <span>🎤</span>
-                    <span>You (${{currentUser}})</span>
+                    <span>You (${{{{currentUser}}}})</span>
                 </div>
             `;
             
-            peerConnections.forEach((pc, userId) => {{
+            peerConnections.forEach((pc, userId) => {{{{
                 const participant = document.createElement('div');
                 participant.className = 'participant';
-                participant.id = `participant-${{userId}}`;
+                participant.id = `participant-${{{{userId}}}}`;
                 participant.innerHTML = `
                     <span>🔊</span>
-                    <span>User ${{userId.substring(0, 8)}}...</span>
+                    <span>User ${{{{userId.substring(0, 8)}}}}...</span>
                 `;
                 participantList.appendChild(participant);
-            }});
-        }}
+            }}}});
+        }}}}
         
-        function updateUserVoiceActivity(userId, isActive) {{
-            const participant = document.getElementById(`participant-${{userId}}`);
-            if (participant) {{
-                if (isActive) {{
+        function updateUserVoiceActivity(userId, isActive) {{{{
+            const participant = document.getElementById(`participant-${{{{userId}}}}`);
+            if (participant) {{{{
+                if (isActive) {{{{
                     participant.classList.add('speaking');
-                }} else {{
+                }}}} else {{{{
                     participant.classList.remove('speaking');
-                }}
-            }}
-        }}
+                }}}}
+            }}}}
+        }}}}
         
         document.getElementById('talkBtn').addEventListener('contextmenu', e => e.preventDefault());
         
         // Initialize everything when page loads
-        document.addEventListener('DOMContentLoaded', function() {{
+        document.addEventListener('DOMContentLoaded', function() {{{{
             initializeVoiceConnection();
             setInterval(loadMessages, 2000);
             loadMessages();
@@ -1706,7 +1706,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             console.log('👤 Logged in as:', currentUser);
             console.log('💬 Text chat ready');
             console.log('🎤 Voice room connected');
-        }});
+        }}}});
     </script>
 </body>
 </html>
