@@ -17,16 +17,14 @@ PORT = int(os.environ.get('PORT', 8080))
 chatroom_messages = []
 chatroom_lock = threading.Lock()
 users_db = {}  # username -> {"password_hash": str, "created": datetime, "last_seen": datetime}
-user_sessions = {}  # session_id -> {"username": str, "expires": datetime, "last_activity": datetime}
-online_users = {}  # session_id -> {"username": str, "last_ping": datetime}
-typing_users = {}  # username -> timestamp
+user_sessions = {}  # session_id -> {"username": str, "expires": datetime}
 users_lock = threading.Lock()
 
 # Persistence configuration
-GITHUB_GIST_TOKEN = os.environ.get('GITHUB_GIST_TOKEN', '')
-GITHUB_GIST_ID = os.environ.get('GITHUB_GIST_ID', '')
+GITHUB_GIST_TOKEN = os.environ.get('GITHUB_GIST_TOKEN', '')  # Set this in Render environment
+GITHUB_GIST_ID = os.environ.get('GITHUB_GIST_ID', '')  # Set this after first run
 BACKUP_INTERVAL = 300  # 5 minutes
-EXTERNAL_BACKUP_URL = os.environ.get('BACKUP_WEBHOOK_URL', '')
+EXTERNAL_BACKUP_URL = os.environ.get('BACKUP_WEBHOOK_URL', '')  # Optional webhook backup
 
 class DataPersistence:
     """Handles multiple backup strategies for data persistence"""
@@ -34,7 +32,7 @@ class DataPersistence:
     @staticmethod
     def hash_password(password):
         """Hash password with salt"""
-        salt = "chatroom_salt_2024"
+        salt = "chatroom_salt_2024"  # In production, use random salt per user
         return hashlib.sha256((password + salt).encode()).hexdigest()
     
     @staticmethod
@@ -60,13 +58,14 @@ class DataPersistence:
                         }
                         for username, data in users_db.items()
                     },
-                    "messages": chatroom_messages[-50:],
+                    "messages": chatroom_messages[-50:],  # Keep last 50 messages
                     "stats": {
                         "total_users": len(users_db),
                         "total_messages": len(chatroom_messages)
                     }
                 }
             
+            # Update GitHub Gist
             headers = {
                 'Authorization': f'token {GITHUB_GIST_TOKEN}',
                 'Accept': 'application/vnd.github.v3+json'
@@ -125,6 +124,7 @@ class DataPersistence:
             backup_data = json.loads(backup_content)
             
             with chatroom_lock, users_lock:
+                # Restore users
                 global users_db
                 users_db = {}
                 for username, user_data in backup_data.get("users", {}).items():
@@ -134,9 +134,11 @@ class DataPersistence:
                         "last_seen": datetime.fromisoformat(user_data["last_seen"])
                     }
                 
+                # Restore messages
                 global chatroom_messages
                 chatroom_messages = backup_data.get("messages", [])
                 
+                # Fix message IDs
                 for i, msg in enumerate(chatroom_messages):
                     msg['id'] = i + 1
             
@@ -179,6 +181,7 @@ class DataPersistence:
             print(f"⚠️ Webhook backup error: {e}")
             return False
 
+# Initialize data persistence
 data_persistence = DataPersistence()
 
 def backup_data_periodically():
@@ -187,36 +190,12 @@ def backup_data_periodically():
         time.sleep(BACKUP_INTERVAL)
         print(f"🔄 Starting periodic backup...")
         
+        # Try GitHub Gist first
         if data_persistence.backup_to_github_gist():
             print("✅ Primary backup (GitHub Gist) successful")
         else:
             print("⚠️ Primary backup failed, trying webhook...")
             data_persistence.backup_to_webhook()
-
-def cleanup_inactive_users():
-    """Remove inactive users from online list"""
-    while True:
-        time.sleep(30)  # Check every 30 seconds
-        current_time = datetime.now()
-        
-        with users_lock:
-            # Remove users inactive for more than 2 minutes
-            inactive_sessions = [
-                session_id for session_id, data in online_users.items()
-                if (current_time - data['last_ping']).total_seconds() > 120
-            ]
-            
-            for session_id in inactive_sessions:
-                del online_users[session_id]
-            
-            # Clean up typing users (remove if inactive for 10 seconds)
-            inactive_typing = [
-                username for username, timestamp in typing_users.items()
-                if (current_time - timestamp).total_seconds() > 10
-            ]
-            
-            for username in inactive_typing:
-                del typing_users[username]
 
 class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -252,7 +231,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💬 Chatroom Login</title>
+    <title>🎤💬 Chatroom Login</title>
     <style>
         * {
             margin: 0;
@@ -443,8 +422,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
 </head>
 <body>
     <div class="login-container">
-        <div class="logo">💬</div>
-        <h1>Enhanced Chatroom</h1>
+        <div class="logo">🎤💬</div>
+        <h1>Chatroom + Voice Room</h1>
         
         <div class="error-message" id="errorMessage"></div>
         <div class="success-message" id="successMessage"></div>
@@ -505,23 +484,25 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         </div>
         
         <div class="server-info">
-            <h3>🔐 Enhanced Features</h3>
-            <p>• See who's online in real-time</p>
-            <p>• Reply to specific messages</p>
-            <p>• Typing indicators</p>
-            <p>• Smart scrolling behavior</p>
-            <p>• Secure & persistent storage</p>
+            <h3>🔐 Secure & Persistent</h3>
+            <p>• Your data is backed up automatically</p>
+            <p>• Accounts persist across server restarts</p>
+            <p>• Voice + text chat with friends</p>
+            <p>• Mobile-friendly interface</p>
         </div>
     </div>
 
     <script>
         function switchForm(formType) {
+            // Update tabs
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             
+            // Update forms
             document.querySelectorAll('.form-container').forEach(form => form.classList.remove('active'));
             document.getElementById(formType + 'Form').classList.add('active');
             
+            // Clear messages
             hideMessages();
         }
         
@@ -626,6 +607,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 const data = await response.json();
                 
                 if (data.success) {
+                    // Store session and redirect
                     document.cookie = `session_id=${data.session_id}; path=/; max-age=345600`; // 96 hours
                     showSuccess('Login successful! Redirecting to chatroom...');
                     setTimeout(() => {
@@ -676,6 +658,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 
                 if (data.success) {
                     showSuccess('Account created successfully! You can now login.');
+                    // Switch to login form
                     setTimeout(() => {
                         switchForm('login');
                         document.getElementById('loginUsername').value = username;
@@ -692,6 +675,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }
         }
         
+        // Check if already logged in
         document.addEventListener('DOMContentLoaded', async function() {
             try {
                 const response = await fetch('/api/auth/check');
@@ -719,30 +703,28 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(html_content.encode('utf-8'))
     
     def serve_chatroom(self):
-        """Serve the chatroom with enhanced features"""
+        """Serve the chatroom - but check authentication first"""
+        # Check if user is authenticated
         session_id = self.get_session_from_cookies()
         if not session_id or not self.is_valid_session(session_id):
+            # Redirect to login
             self.send_response(302)
             self.send_header("Location", "/")
             self.end_headers()
             return
         
-        # Update user activity
-        with users_lock:
-            username = user_sessions.get(session_id, {}).get('username', 'Anonymous')
-            user_sessions[session_id]['last_activity'] = datetime.now()
-            online_users[session_id] = {
-                'username': username,
-                'last_ping': datetime.now()
-            }
+        # Get username from session
+        username = user_sessions.get(session_id, {}).get('username', 'Anonymous')
         
+        """Serve the public chatroom interface with voice room connected to Render server"""
         html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Chatroom 💬</title>
+    <title>Chatroom + Voice Room 🎤💬</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         * {{
             margin: 0;
@@ -833,7 +815,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             background: rgba(255, 255, 255, 0.25);
         }}
         
-        .stats-container {{
+        .online-count {{
             background: rgba(76, 175, 80, 0.8);
             padding: 5px 15px;
             border-radius: 20px;
@@ -845,126 +827,30 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         .main-container {{
             flex: 1;
             display: flex;
-            max-width: 1200px;
+            flex-direction: column;
+            max-width: 1000px;
             margin: 0 auto;
             width: 100%;
             padding: 20px;
-            gap: 20px;
-        }}
-        
-        .sidebar {{
-            width: 300px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }}
-        
-        .online-users {{
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-        }}
-        
-        .online-users h3 {{
-            margin-bottom: 15px;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
-        
-        .user-item {{
-            background: #f0f8ff;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            border-left: 3px solid #667eea;
-        }}
-        
-        .user-item.current-user {{
-            background: #e3f2fd;
-            border-left-color: #2196F3;
-            font-weight: bold;
-        }}
-        
-        .user-status {{
-            width: 8px;
-            height: 8px;
-            background: #4CAF50;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }}
-        
-        @keyframes pulse {{
-            0% {{ opacity: 1; }}
-            50% {{ opacity: 0.5; }}
-            100% {{ opacity: 1; }}
-        }}
-        
-        .typing-indicators {{
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 15px;
-            min-height: 100px;
-        }}
-        
-        .typing-indicators h3 {{
-            margin-bottom: 15px;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }}
-        
-        .typing-item {{
-            background: #fff3e0;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            color: #333;
-            border-left: 3px solid #ff9800;
-            animation: fadeIn 0.3s ease-in;
-        }}
-        
-        .typing-dots {{
-            display: inline-block;
-            margin-left: 5px;
-        }}
-        
-        .typing-dots::after {{
-            content: '';
-            animation: typing 1.5s infinite;
-        }}
-        
-        @keyframes typing {{
-            0% {{ content: ''; }}
-            25% {{ content: '.'; }}
-            50% {{ content: '..'; }}
-            75% {{ content: '...'; }}
-            100% {{ content: ''; }}
-        }}
-        
-        .chat-area {{
-            flex: 1;
-            display: flex;
-            flex-direction: column;
         }}
         
         .tab-content {{
             display: none;
             flex: 1;
-            flex-direction: column;
+            animation: fadeIn 0.3s ease-in;
         }}
         
         .tab-content.active {{
             display: flex;
+            flex-direction: column;
         }}
         
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(10px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        
+        /* Chat Room Styles */
         .messages-container {{
             flex: 1;
             background: rgba(255, 255, 255, 0.95);
@@ -972,7 +858,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             padding: 20px;
             overflow-y: auto;
             max-height: 400px;
-            position: relative;
+            margin-bottom: 0;
         }}
         
         .message {{
@@ -982,7 +868,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             background: #f8f9fa;
             border-left: 4px solid #667eea;
             animation: slideIn 0.3s ease-out;
-            position: relative;
         }}
         
         .message.own {{
@@ -991,14 +876,14 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             margin-left: 50px;
         }}
         
-        .message.reply {{
-            background: #f3e5f5;
-            border-left-color: #9c27b0;
+        .message.voice {{
+            background: #fff3e0;
+            border-left-color: #ff9800;
         }}
         
         .message-header {{
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 5px;
             font-size: 0.9em;
@@ -1014,48 +899,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             font-size: 0.8em;
         }}
         
-        .message-actions {{
-            position: absolute;
-            top: 5px;
-            right: 10px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }}
-        
-        .message:hover .message-actions {{
-            opacity: 1;
-        }}
-        
-        .reply-btn {{
-            background: none;
-            border: none;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            color: #666;
-            transition: background 0.2s;
-        }}
-        
-        .reply-btn:hover {{
-            background: rgba(0,0,0,0.1);
-        }}
-        
-        .reply-reference {{
-            background: rgba(0,0,0,0.05);
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            font-size: 0.85em;
-            color: #666;
-            border-left: 3px solid #9c27b0;
-        }}
-        
-        .reply-username {{
-            font-weight: bold;
-            color: #9c27b0;
-        }}
-        
         .message-text {{
             color: #333;
             line-height: 1.4;
@@ -1067,52 +910,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             padding: 20px;
             border-radius: 0 0 15px 15px;
             display: flex;
-            flex-direction: column;
             gap: 10px;
-        }}
-        
-        .reply-preview {{
-            background: rgba(156, 39, 176, 0.1);
-            padding: 10px;
-            border-radius: 8px;
-            border-left: 3px solid #9c27b0;
-            display: none;
-        }}
-        
-        .reply-preview-header {{
-            display: flex;
-            justify-content: between;
             align-items: center;
-            margin-bottom: 5px;
-        }}
-        
-        .reply-preview-username {{
-            font-weight: bold;
-            color: #9c27b0;
-            font-size: 0.9em;
-        }}
-        
-        .cancel-reply {{
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: #666;
-            font-size: 16px;
-            padding: 2px;
-        }}
-        
-        .reply-preview-text {{
-            font-size: 0.85em;
-            color: #666;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }}
-        
-        .input-row {{
-            display: flex;
-            gap: 10px;
-            align-items: flex-end;
         }}
         
         #messageInput {{
@@ -1122,32 +921,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             border-radius: 8px;
             font-size: 14px;
             resize: none;
-            min-height: 42px;
-            max-height: 120px;
-        }}
-        
-        #messageInput:focus {{
-            border-color: #667eea;
-            outline: none;
-        }}
-        
-        .emoji-buttons {{
-            display: flex;
-            gap: 5px;
-        }}
-        
-        .emoji-btn {{
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            padding: 8px;
-            border-radius: 6px;
-            transition: background 0.2s;
-        }}
-        
-        .emoji-btn:hover {{
-            background: rgba(0,0,0,0.1);
         }}
         
         #sendButton {{
@@ -1160,7 +933,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             font-size: 14px;
             font-weight: bold;
             transition: all 0.3s ease;
-            white-space: nowrap;
         }}
         
         #sendButton:hover {{
@@ -1175,35 +947,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             padding: 40px;
         }}
         
-        .voice-maintenance {{
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 15px;
-            padding: 40px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            gap: 20px;
-        }}
-        
-        .maintenance-icon {{
-            font-size: 4em;
-            color: #ff9800;
-        }}
-        
-        .maintenance-title {{
-            font-size: 1.5em;
-            color: #333;
-            font-weight: bold;
-        }}
-        
-        .maintenance-message {{
-            color: #666;
-            line-height: 1.6;
-            max-width: 400px;
-        }}
-        
         @keyframes slideIn {{
             from {{
                 opacity: 0;
@@ -1215,58 +958,160 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }}
         }}
         
-        @keyframes fadeIn {{
-            from {{ opacity: 0; }}
-            to {{ opacity: 1; }}
+        .emoji-btn {{
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 3px;
+            transition: background 0.2s;
         }}
         
-        .scroll-to-bottom {{
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: #667eea;
+        .emoji-btn:hover {{
+            background: rgba(0,0,0,0.1);
+        }}
+        
+        /* Voice Room Styles */
+        .voice-container {{
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }}
+        
+        .voice-controls {{
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }}
+        
+        .voice-btn {{
+            background: #4CAF50;
             color: white;
             border: none;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
+            padding: 15px 25px;
+            border-radius: 50px;
             cursor: pointer;
-            display: none;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            min-width: 120px;
+            display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            transition: all 0.3s ease;
+            gap: 8px;
         }}
         
-        .scroll-to-bottom:hover {{
-            background: #5a6fd8;
-            transform: scale(1.1);
+        .voice-btn:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
         
-        @media (max-width: 768px) {{
-            .main-container {{
+        .voice-btn.recording {{
+            background: #f44336;
+            animation: pulse 1.5s infinite;
+        }}
+        
+        .voice-btn.disabled {{
+            background: #ccc;
+            cursor: not-allowed;
+        }}
+        
+        @keyframes pulse {{
+            0% {{ transform: scale(1); }}
+            50% {{ transform: scale(1.05); }}
+            100% {{ transform: scale(1); }}
+        }}
+        
+        .voice-status {{
+            background: rgba(0,0,0,0.05);
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-weight: bold;
+            color: #333;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        
+        .voice-participants {{
+            background: rgba(0,0,0,0.05);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 500px;
+        }}
+        
+        .voice-participants h3 {{
+            margin-bottom: 15px;
+            color: #333;
+        }}
+        
+        .participant-list {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }}
+        
+        .participant {{
+            background: #667eea;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        
+        .participant.speaking {{
+            animation: speakingGlow 1s infinite alternate;
+        }}
+        
+        @keyframes speakingGlow {{
+            from {{ box-shadow: 0 0 5px rgba(102, 126, 234, 0.5); }}
+            to {{ box-shadow: 0 0 15px rgba(102, 126, 234, 0.8); }}
+        }}
+        
+        .connection-status {{
+            background: rgba(255, 193, 7, 0.1);
+            border: 2px solid rgba(255, 193, 7, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #333;
+        }}
+        
+        .connection-status.connected {{
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+        }}
+        
+        @media (max-width: 600px) {{
+            .input-container {{
                 flex-direction: column;
-                padding: 10px;
-            }}
-            
-            .sidebar {{
-                width: 100%;
-                flex-direction: row;
                 gap: 10px;
             }}
             
-            .online-users, .typing-indicators {{
-                flex: 1;
-                max-height: 200px;
-            }}
-            
-            .input-row {{
+            .voice-controls {{
                 flex-direction: column;
-                align-items: stretch;
             }}
             
-            .emoji-buttons {{
-                justify-content: center;
+            .voice-btn {{
+                width: 100%;
+                max-width: 250px;
             }}
             
             .user-info {{
@@ -1283,75 +1128,63 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             <div class="username-display">👤 {username}</div>
             <button class="logout-btn" onclick="logout()">🚪 Logout</button>
         </div>
-        <h1>💬 Enhanced Chatroom</h1>
+        <h1>🎤💬 Chatroom + Voice Room</h1>
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('chat')">💬 Chat</button>
-            <button class="tab-btn" onclick="switchTab('voice')">🎤 Voice</button>
+            <button class="tab-btn active" onclick="switchTab('chat')">💬 Text Chat</button>
+            <button class="tab-btn" onclick="switchTab('voice')">🎤 Voice Room</button>
         </div>
-        <div class="stats-container" id="statsContainer">🔄 Loading...</div>
+        <div class="online-count" id="onlineCount">🟢 Loading...</div>
     </div>
     
     <div class="main-container">
-        <div class="sidebar">
-            <div class="online-users">
-                <h3>🟢 Online Users (<span id="onlineCount">0</span>)</h3>
-                <div id="onlineUsersList">
-                    <div style="color: #666; text-align: center; padding: 20px;">Loading...</div>
-                </div>
+        <!-- Text Chat Tab -->
+        <div id="chatTab" class="tab-content active">
+            <div class="messages-container" id="messagesContainer">
+                <div class="no-messages">Welcome to the chatroom! Send a message to get started 🚀</div>
             </div>
             
-            <div class="typing-indicators">
-                <h3>⌨️ Typing</h3>
-                <div id="typingList">
-                    <div style="color: #666; text-align: center; padding: 20px;">No one is typing</div>
-                </div>
+            <div class="input-container">
+                <textarea id="messageInput" placeholder="Type your message..." rows="1" maxlength="500"></textarea>
+                <button class="emoji-btn" onclick="addEmoji('😊')">😊</button>
+                <button class="emoji-btn" onclick="addEmoji('👍')">👍</button>
+                <button class="emoji-btn" onclick="addEmoji('❤️')">❤️</button>
+                <button id="sendButton" onclick="sendMessage()">Send 📤</button>
             </div>
         </div>
         
-        <div class="chat-area">
-            <!-- Chat Tab -->
-            <div id="chatTab" class="tab-content active">
-                <div class="messages-container" id="messagesContainer">
-                    <div class="no-messages">Welcome to the enhanced chatroom! 🚀</div>
-                    <button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottom()">↓</button>
+        <!-- Voice Room Tab -->
+        <div id="voiceTab" class="tab-content">
+            <div class="voice-container">
+                <div class="connection-status" id="connectionStatus">
+                    🔌 Connecting to voice server...
                 </div>
                 
-                <div class="input-container">
-                    <div class="reply-preview" id="replyPreview">
-                        <div class="reply-preview-header">
-                            <span class="reply-preview-username" id="replyUsername"></span>
-                            <button class="cancel-reply" onclick="cancelReply()">✕</button>
-                        </div>
-                        <div class="reply-preview-text" id="replyText"></div>
-                    </div>
-                    
-                    <div class="input-row">
-                        <textarea id="messageInput" placeholder="Type your message..." rows="1" maxlength="500"></textarea>
-                        <div class="emoji-buttons">
-                            <button class="emoji-btn" onclick="addEmoji('😊')">😊</button>
-                            <button class="emoji-btn" onclick="addEmoji('👍')">👍</button>
-                            <button class="emoji-btn" onclick="addEmoji('❤️')">❤️</button>
-                            <button class="emoji-btn" onclick="addEmoji('😂')">😂</button>
-                            <button class="emoji-btn" onclick="addEmoji('🎉')">🎉</button>
-                        </div>
-                        <button id="sendButton" onclick="sendMessage()">Send 📤</button>
-                    </div>
+                <div class="voice-status" id="voiceStatus">
+                    🎤 Click "Join Voice Room" to start talking with others!
                 </div>
-            </div>
-            
-            <!-- Voice Tab -->
-            <div id="voiceTab" class="tab-content">
-                <div class="voice-maintenance">
-                    <div class="maintenance-icon">🔧</div>
-                    <div class="maintenance-title">Voice Feature Under Maintenance</div>
-                    <div class="maintenance-message">
-                        We're working hard to improve the voice chat experience! 
-                        The voice feature is temporarily unavailable while we implement 
-                        new enhancements and fix some technical issues.
-                        <br><br>
-                        Please check back soon. In the meantime, enjoy our enhanced 
-                        text chat with reply features, typing indicators, and real-time 
-                        online user tracking!
+                
+                <div class="voice-controls">
+                    <button class="voice-btn" id="joinVoiceBtn" onclick="joinVoiceRoom()">
+                        🎤 Join Voice Room
+                    </button>
+                    <button class="voice-btn disabled" id="talkBtn" onmousedown="startTalking()" onmouseup="stopTalking()" ontouchstart="startTalking()" ontouchend="stopTalking()">
+                        🗣️ Hold to Talk
+                    </button>
+                    <button class="voice-btn" id="muteBtn" onclick="toggleMute()" style="background: #ff9800; display: none;">
+                        🔊 Mute
+                    </button>
+                    <button class="voice-btn" id="leaveVoiceBtn" onclick="leaveVoiceRoom()" style="background: #f44336; display: none;">
+                        📞 Leave Voice
+                    </button>
+                </div>
+                
+                <div class="voice-participants">
+                    <h3>👥 Voice Participants (<span id="participantCount">0</span>)</h3>
+                    <div class="participant-list" id="participantList">
+                        <div class="participant">
+                            <span>💤</span>
+                            <span>No one in voice yet</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1361,78 +1194,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
     <script>
         let currentUser = '{username}';
         let lastMessageId = 0;
-        let replyToMessage = null;
-        let typingTimeout = null;
-        let isUserScrolling = false;
-        let shouldAutoScroll = true;
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {{
-            initializeChat();
-            console.log('🎉 Enhanced Chatroom loaded!');
-            console.log('👤 Logged in as:', currentUser);
-        }});
+        // Voice variables
+        let socket = null;
+        let localStream = null;
+        let peerConnections = new Map();
+        let isInVoiceRoom = false;
+        let isMuted = false;
+        let isTalking = false;
+        let roomId = 'main-voice-room';
         
-        function initializeChat() {{
-            setupMessageInput();
-            setupScrollDetection();
-            startPeriodicUpdates();
-            loadMessages();
-            updateOnlineUsers();
-        }}
+        // Connect to your Render signaling server
+        const SIGNALING_SERVER = 'https://repo1-ejq1.onrender.com';
         
-        function setupMessageInput() {{
-            const messageInput = document.getElementById('messageInput');
-            
-            // Auto-resize textarea
-            messageInput.addEventListener('input', function() {{
-                this.style.height = 'auto';
-                this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-                
-                // Handle typing indicator
-                handleTyping();
-            }});
-            
-            // Send on Enter
-            messageInput.addEventListener('keydown', function(e) {{
-                if (e.key === 'Enter' && !e.shiftKey) {{
-                    e.preventDefault();
-                    sendMessage();
-                }}
-            }});
-        }}
-        
-        function setupScrollDetection() {{
-            const container = document.getElementById('messagesContainer');
-            
-            container.addEventListener('scroll', function() {{
-                const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
-                shouldAutoScroll = isAtBottom;
-                
-                // Show/hide scroll to bottom button
-                const scrollBtn = document.getElementById('scrollToBottom');
-                if (isAtBottom) {{
-                    scrollBtn.style.display = 'none';
-                }} else {{
-                    scrollBtn.style.display = 'flex';
-                }}
-            }});
-        }}
-        
-        function startPeriodicUpdates() {{
-            // Load messages every 2 seconds
-            setInterval(loadMessages, 2000);
-            
-            // Update online users every 5 seconds
-            setInterval(updateOnlineUsers, 5000);
-            
-            // Update typing indicators every 1 second
-            setInterval(updateTypingIndicators, 1000);
-            
-            // Send heartbeat every 30 seconds
-            setInterval(sendHeartbeat, 30000);
-        }}
-        
+        // Authentication function
         async function logout() {{
             try {{
                 await fetch('/api/auth/logout', {{ method: 'POST' }});
@@ -1444,6 +1219,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             }}
         }}
         
+        // Tab switching
         function switchTab(tabName) {{
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
@@ -1452,46 +1228,86 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             document.getElementById(tabName + 'Tab').classList.add('active');
         }}
         
+        // Initialize Socket.IO connection
+        function initializeVoiceConnection() {{
+            socket = io(SIGNALING_SERVER);
+            
+            socket.on('connect', () => {{
+                console.log('Connected to voice server!');
+                document.getElementById('connectionStatus').innerHTML = '🟢 Connected to voice server';
+                document.getElementById('connectionStatus').classList.add('connected');
+            }});
+            
+            socket.on('disconnect', () => {{
+                console.log('Disconnected from voice server');
+                document.getElementById('connectionStatus').innerHTML = '🔴 Disconnected from voice server';
+                document.getElementById('connectionStatus').classList.remove('connected');
+            }});
+            
+            socket.on('user-joined', (data) => {{
+                console.log('User joined:', data.username);
+                createPeerConnection(data.userId);
+                updateVoiceNotification(`🎤 ${{data.username}} joined voice room`);
+            }});
+            
+            socket.on('user-left', (data) => {{
+                console.log('User left:', data.username);
+                closePeerConnection(data.userId);
+                updateVoiceNotification(`📞 ${{data.username}} left voice room`);
+            }});
+            
+            socket.on('offer', async (data) => {{
+                console.log('Received offer from:', data.from);
+                await handleOffer(data.offer, data.from);
+            }});
+            
+            socket.on('answer', async (data) => {{
+                console.log('Received answer from:', data.from);
+                await handleAnswer(data.answer, data.from);
+            }});
+            
+            socket.on('ice-candidate', async (data) => {{
+                console.log('Received ICE candidate from:', data.from);
+                await handleIceCandidate(data.candidate, data.from);
+            }});
+            
+            socket.on('room-stats', (data) => {{
+                document.getElementById('participantCount').textContent = data.userCount;
+                updateParticipantsList();
+            }});
+            
+            socket.on('user-voice-activity', (data) => {{
+                updateUserVoiceActivity(data.userId, data.isActive);
+            }});
+        }}
+        
+        // Chat functionality
+        const messageInput = document.getElementById('messageInput');
+        messageInput.addEventListener('input', function() {{
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+        }});
+        
+        messageInput.addEventListener('keydown', function(e) {{
+            if (e.key === 'Enter' && !e.shiftKey) {{
+                e.preventDefault();
+                sendMessage();
+            }}
+        }});
+        
         function addEmoji(emoji) {{
             const input = document.getElementById('messageInput');
-            const start = input.selectionStart;
-            const end = input.selectionEnd;
-            const text = input.value;
-            
-            input.value = text.substring(0, start) + emoji + text.substring(end);
-            input.selectionStart = input.selectionEnd = start + emoji.length;
+            input.value += emoji;
             input.focus();
-            
-            // Trigger input event for auto-resize
-            input.dispatchEvent(new Event('input'));
-        }}
-        
-        function replyToMsg(messageId, username, text) {{
-            replyToMessage = {{
-                id: messageId,
-                username: username,
-                text: text.length > 50 ? text.substring(0, 50) + '...' : text
-            }};
-            
-            document.getElementById('replyUsername').textContent = username;
-            document.getElementById('replyText').textContent = replyToMessage.text;
-            document.getElementById('replyPreview').style.display = 'block';
-            document.getElementById('messageInput').focus();
-        }}
-        
-        function cancelReply() {{
-            replyToMessage = null;
-            document.getElementById('replyPreview').style.display = 'none';
         }}
         
         function sendMessage() {{
-            const messageText = document.getElementById('messageInput').value.trim();
+            const messageText = messageInput.value.trim();
             if (!messageText) return;
             
             const message = {{
                 text: messageText,
-                timestamp: new Date().toISOString(),
-                replyTo: replyToMessage ? replyToMessage.id : null
+                timestamp: new Date().toISOString()
             }};
             
             fetch('/api/chat/send', {{
@@ -1504,10 +1320,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             .then(response => response.json())
             .then(data => {{
                 if (data.success) {{
-                    document.getElementById('messageInput').value = '';
-                    document.getElementById('messageInput').style.height = 'auto';
-                    cancelReply();
-                    shouldAutoScroll = true;
+                    messageInput.value = '';
+                    messageInput.style.height = 'auto';
                     if (data.messageId) {{
                         lastMessageId = data.messageId;
                     }}
@@ -1529,13 +1343,11 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                         window.location.href = '/';
                         return;
                     }}
-                    
                     if (data.messages && data.messages.length > 0) {{
                         displayMessages(data.messages);
                         lastMessageId = data.lastId;
                     }}
-                    
-                    updateStats(data);
+                    updateOnlineCount(data.messageCount || 0);
                 }})
                 .catch(error => {{
                     console.error('Error loading messages:', error);
@@ -1559,155 +1371,30 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 const messageDiv = document.createElement('div');
                 let messageClass = 'message';
                 if (message.username === currentUser) messageClass += ' own';
-                if (message.replyTo) messageClass += ' reply';
+                if (message.text.includes('🎤') || message.text.includes('🗣️') || message.text.includes('📞')) messageClass += ' voice';
                 
                 messageDiv.className = messageClass;
                 messageDiv.id = `message-${{message.id}}`;
                 
                 const timestamp = new Date(message.timestamp).toLocaleTimeString();
                 
-                let replyHtml = '';
-                if (message.replyTo) {{
-                    const replyMsg = findMessageById(message.replyTo);
-                    if (replyMsg) {{
-                        replyHtml = `
-                            <div class="reply-reference">
-                                <span class="reply-username">${{escapeHtml(replyMsg.username)}}</span>
-                                <div>${{escapeHtml(replyMsg.text.length > 50 ? replyMsg.text.substring(0, 50) + '...' : replyMsg.text)}}</div>
-                            </div>
-                        `;
-                    }}
-                }}
-                
                 messageDiv.innerHTML = `
-                    <div class="message-actions">
-                        <button class="reply-btn" onclick="replyToMsg(${{message.id}}, '${{escapeHtml(message.username)}}', '${{escapeHtml(message.text)}}')">↩️</button>
-                    </div>
                     <div class="message-header">
                         <span class="username">${{escapeHtml(message.username)}}</span>
                         <span class="timestamp">${{timestamp}}</span>
                     </div>
-                    ${{replyHtml}}
                     <div class="message-text">${{escapeHtml(message.text)}}</div>
                 `;
                 
                 container.appendChild(messageDiv);
             }});
             
-            if (shouldAutoScroll) {{
-                scrollToBottom();
-            }}
-        }}
-        
-        function findMessageById(id) {{
-            const messageElement = document.getElementById(`message-${{id}}`);
-            if (!messageElement) return null;
-            
-            const username = messageElement.querySelector('.username').textContent;
-            const text = messageElement.querySelector('.message-text').textContent;
-            return {{ username, text }};
-        }}
-        
-        function scrollToBottom() {{
-            const container = document.getElementById('messagesContainer');
             container.scrollTop = container.scrollHeight;
-            shouldAutoScroll = true;
         }}
         
-        function updateStats(data) {{
-            const stats = document.getElementById('statsContainer');
-            stats.textContent = `💬 ${{data.messageCount || 0}} messages`;
-        }}
-        
-        function updateOnlineUsers() {{
-            fetch('/api/users/online')
-                .then(response => response.json())
-                .then(data => {{
-                    if (data.error === 'Not authenticated') {{
-                        window.location.href = '/';
-                        return;
-                    }}
-                    
-                    const usersList = document.getElementById('onlineUsersList');
-                    const count = document.getElementById('onlineCount');
-                    
-                    count.textContent = data.users.length;
-                    
-                    if (data.users.length === 0) {{
-                        usersList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No users online</div>';
-                        return;
-                    }}
-                    
-                    usersList.innerHTML = data.users.map(user => `
-                        <div class="user-item ${{user.username === currentUser ? 'current-user' : ''}}">
-                            <div class="user-status"></div>
-                            <span>${{escapeHtml(user.username)}}</span>
-                        </div>
-                    `).join('');
-                }})
-                .catch(error => {{
-                    console.error('Error updating online users:', error);
-                }});
-        }}
-        
-        function updateTypingIndicators() {{
-            fetch('/api/users/typing')
-                .then(response => response.json())
-                .then(data => {{
-                    if (data.error === 'Not authenticated') {{
-                        return;
-                    }}
-                    
-                    const typingList = document.getElementById('typingList');
-                    
-                    if (data.typing.length === 0) {{
-                        typingList.innerHTML = '<div style="color: #666; text-align: center; padding: 20px;">No one is typing</div>';
-                        return;
-                    }}
-                    
-                    typingList.innerHTML = data.typing.map(username => `
-                        <div class="typing-item">
-                            ${{escapeHtml(username)}} is typing<span class="typing-dots"></span>
-                        </div>
-                    `).join('');
-                }})
-                .catch(error => {{
-                    console.error('Error updating typing indicators:', error);
-                }});
-        }}
-        
-        function handleTyping() {{
-            // Send typing indicator
-            fetch('/api/users/typing', {{
-                method: 'POST',
-                headers: {{
-                    'Content-Type': 'application/json',
-                }},
-                body: JSON.stringify({{ typing: true }})
-            }});
-            
-            // Clear existing timeout
-            if (typingTimeout) {{
-                clearTimeout(typingTimeout);
-            }}
-            
-            // Stop typing after 3 seconds of inactivity
-            typingTimeout = setTimeout(() => {{
-                fetch('/api/users/typing', {{
-                    method: 'POST',
-                    headers: {{
-                        'Content-Type': 'application/json',
-                    }},
-                    body: JSON.stringify({{ typing: false }})
-                }});
-            }}, 3000);
-        }}
-        
-        function sendHeartbeat() {{
-            fetch('/api/users/heartbeat', {{ method: 'POST' }})
-                .catch(error => {{
-                    console.error('Heartbeat failed:', error);
-                }});
+        function updateOnlineCount(messageCount) {{
+            const onlineCount = document.getElementById('onlineCount');
+            onlineCount.textContent = `💬 ${{messageCount}} messages`;
         }}
         
         function escapeHtml(text) {{
@@ -1715,6 +1402,309 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             div.textContent = text;
             return div.innerHTML;
         }}
+        
+        function updateVoiceNotification(text) {{
+            const message = {{
+                text: text,
+                timestamp: new Date().toISOString()
+            }};
+            
+            fetch('/api/chat/send', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json',
+                }},
+                body: JSON.stringify(message)
+            }});
+        }}
+        
+        // Voice Room functionality (same as before)
+        async function joinVoiceRoom() {{
+            try {{
+                localStream = await navigator.mediaDevices.getUserMedia({{
+                    audio: {{
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 44100
+                    }}
+                }});
+                
+                localStream.getAudioTracks().forEach(track => {{
+                    track.enabled = false;
+                }});
+                
+                isInVoiceRoom = true;
+                
+                socket.emit('join-room', {{
+                    roomId: roomId,
+                    username: currentUser
+                }});
+                
+                document.getElementById('joinVoiceBtn').style.display = 'none';
+                document.getElementById('talkBtn').classList.remove('disabled');
+                document.getElementById('muteBtn').style.display = 'inline-flex';
+                document.getElementById('leaveVoiceBtn').style.display = 'inline-flex';
+                document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
+                
+                updateVoiceNotification(`🎤 ${{currentUser}} joined the voice room`);
+                
+            }} catch (error) {{
+                console.error('Error accessing microphone:', error);
+                document.getElementById('voiceStatus').innerHTML = '❌ Microphone access denied. Please allow microphone and try again.';
+            }}
+        }}
+        
+        function leaveVoiceRoom() {{
+            if (localStream) {{
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }}
+            
+            peerConnections.forEach((pc, userId) => {{
+                pc.close();
+            }});
+            peerConnections.clear();
+            
+            isInVoiceRoom = false;
+            isTalking = false;
+            isMuted = false;
+            
+            document.getElementById('joinVoiceBtn').style.display = 'inline-flex';
+            document.getElementById('talkBtn').classList.add('disabled');
+            document.getElementById('muteBtn').style.display = 'none';
+            document.getElementById('leaveVoiceBtn').style.display = 'none';
+            document.getElementById('voiceStatus').innerHTML = '🎤 Click "Join Voice Room" to start talking with others!';
+            
+            updateVoiceNotification(`📞 ${{currentUser}} left the voice room`);
+            updateParticipantsList();
+        }}
+        
+        async function createPeerConnection(userId) {{
+            const peerConnection = new RTCPeerConnection({{
+                iceServers: [
+                    {{ urls: 'stun:stun.l.google.com:19302' }},
+                    {{ urls: 'stun:global.stun.twilio.com:3478' }}
+                ]
+            }});
+            
+            if (localStream) {{
+                localStream.getTracks().forEach(track => {{
+                    peerConnection.addTrack(track, localStream);
+                }});
+            }}
+            
+            peerConnection.ontrack = (event) => {{
+                const remoteStream = event.streams[0];
+                playRemoteAudio(remoteStream, userId);
+            }};
+            
+            peerConnection.onicecandidate = (event) => {{
+                if (event.candidate) {{
+                    socket.emit('ice-candidate', {{
+                        target: userId,
+                        candidate: event.candidate
+                    }});
+                }}
+            }};
+            
+            peerConnections.set(userId, peerConnection);
+            
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            
+            socket.emit('offer', {{
+                target: userId,
+                offer: offer
+            }});
+        }}
+        
+        async function handleOffer(offer, fromUserId) {{
+            const peerConnection = new RTCPeerConnection({{
+                iceServers: [
+                    {{ urls: 'stun:stun.l.google.com:19302' }},
+                    {{ urls: 'stun:global.stun.twilio.com:3478' }}
+                ]
+            }});
+            
+            if (localStream) {{
+                localStream.getTracks().forEach(track => {{
+                    peerConnection.addTrack(track, localStream);
+                }});
+            }}
+            
+            peerConnection.ontrack = (event) => {{
+                const remoteStream = event.streams[0];
+                playRemoteAudio(remoteStream, fromUserId);
+            }};
+            
+            peerConnection.onicecandidate = (event) => {{
+                if (event.candidate) {{
+                    socket.emit('ice-candidate', {{
+                        target: fromUserId,
+                        candidate: event.candidate
+                    }});
+                }}
+            }};
+            
+            peerConnections.set(fromUserId, peerConnection);
+            
+            await peerConnection.setRemoteDescription(offer);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            socket.emit('answer', {{
+                target: fromUserId,
+                answer: answer
+            }});
+        }}
+        
+        async function handleAnswer(answer, fromUserId) {{
+            const peerConnection = peerConnections.get(fromUserId);
+            if (peerConnection) {{
+                await peerConnection.setRemoteDescription(answer);
+            }}
+        }}
+        
+        async function handleIceCandidate(candidate, fromUserId) {{
+            const peerConnection = peerConnections.get(fromUserId);
+            if (peerConnection) {{
+                await peerConnection.addIceCandidate(candidate);
+            }}
+        }}
+        
+        function closePeerConnection(userId) {{
+            const peerConnection = peerConnections.get(userId);
+            if (peerConnection) {{
+                peerConnection.close();
+                peerConnections.delete(userId);
+            }}
+            
+            const audioElement = document.getElementById(`audio-${{userId}}`);
+            if (audioElement) {{
+                audioElement.remove();
+            }}
+        }}
+        
+        function playRemoteAudio(stream, userId) {{
+            const audio = document.createElement('audio');
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.id = `audio-${{userId}}`;
+            audio.volume = 1.0;
+            
+            document.body.appendChild(audio);
+            console.log(`Playing audio from user: ${{userId}}`);
+        }}
+        
+        function startTalking() {{
+            if (!isInVoiceRoom || isMuted || isTalking || !localStream) return;
+            
+            isTalking = true;
+            
+            localStream.getAudioTracks().forEach(track => {{
+                track.enabled = true;
+            }});
+            
+            document.getElementById('talkBtn').classList.add('recording');
+            document.getElementById('voiceStatus').innerHTML = '🔴 Talking... Release button to stop';
+            
+            socket.emit('voice-activity', {{ isActive: true }});
+        }}
+        
+        function stopTalking() {{
+            if (!isTalking || !localStream) return;
+            
+            isTalking = false;
+            
+            localStream.getAudioTracks().forEach(track => {{
+                track.enabled = false;
+            }});
+            
+            document.getElementById('talkBtn').classList.remove('recording');
+            document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
+            
+            socket.emit('voice-activity', {{ isActive: false }});
+        }}
+        
+        function toggleMute() {{
+            isMuted = !isMuted;
+            const muteBtn = document.getElementById('muteBtn');
+            
+            if (isMuted) {{
+                muteBtn.innerHTML = '🔇 Unmute';
+                muteBtn.style.background = '#f44336';
+                document.getElementById('voiceStatus').innerHTML = '🔇 Microphone muted';
+                
+                if (localStream) {{
+                    localStream.getAudioTracks().forEach(track => track.enabled = false);
+                }}
+            }} else {{
+                muteBtn.innerHTML = '🔊 Mute';
+                muteBtn.style.background = '#ff9800';
+                document.getElementById('voiceStatus').innerHTML = '🎤 In voice room - Hold "Talk" to speak!';
+                
+                if (localStream && !isTalking) {{
+                    localStream.getAudioTracks().forEach(track => track.enabled = false);
+                }}
+            }}
+        }}
+        
+        function updateParticipantsList() {{
+            const participantList = document.getElementById('participantList');
+            
+            if (!isInVoiceRoom) {{
+                participantList.innerHTML = `
+                    <div class="participant">
+                        <span>💤</span>
+                        <span>No one in voice yet</span>
+                    </div>
+                `;
+                return;
+            }}
+            
+            participantList.innerHTML = `
+                <div class="participant" id="myParticipant">
+                    <span>🎤</span>
+                    <span>You (${{currentUser}})</span>
+                </div>
+            `;
+            
+            peerConnections.forEach((pc, userId) => {{
+                const participant = document.createElement('div');
+                participant.className = 'participant';
+                participant.id = `participant-${{userId}}`;
+                participant.innerHTML = `
+                    <span>🔊</span>
+                    <span>User ${{userId.substring(0, 8)}}...</span>
+                `;
+                participantList.appendChild(participant);
+            }});
+        }}
+        
+        function updateUserVoiceActivity(userId, isActive) {{
+            const participant = document.getElementById(`participant-${{userId}}`);
+            if (participant) {{
+                if (isActive) {{
+                    participant.classList.add('speaking');
+                }} else {{
+                    participant.classList.remove('speaking');
+                }}
+            }}
+        }}
+        
+        document.getElementById('talkBtn').addEventListener('contextmenu', e => e.preventDefault());
+        
+        // Initialize everything when page loads
+        document.addEventListener('DOMContentLoaded', function() {{
+            initializeVoiceConnection();
+            setInterval(loadMessages, 2000);
+            loadMessages();
+            
+            console.log('🎉 Authenticated Chatroom + Voice Room loaded!');
+            console.log('👤 Logged in as:', currentUser);
+            console.log('💬 Text chat ready');
+            console.log('🎤 Voice room connected');
+        }});
     </script>
 </body>
 </html>
@@ -1743,6 +1733,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 return False
             
             if datetime.now() > session['expires']:
+                # Session expired, remove it
                 del user_sessions[session_id]
                 return False
             
@@ -1768,15 +1759,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_chat_send()
         elif path.startswith('/api/chat/messages'):
             self.handle_chat_messages(path)
-        elif path == '/api/users/online':
-            self.handle_online_users()
-        elif path == '/api/users/typing':
-            if self.command == 'POST':
-                self.handle_typing_post()
-            else:
-                self.handle_typing_get()
-        elif path == '/api/users/heartbeat':
-            self.handle_heartbeat()
         elif path == '/api/status':
             self.handle_status()
         else:
@@ -1792,6 +1774,7 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             username = data.get('username', '').strip()
             password = data.get('password', '')
             
+            # Validation
             if not username or not password:
                 self.send_json_response({"success": False, "error": "Username and password are required"})
                 return
@@ -1809,16 +1792,19 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 return
             
             with users_lock:
+                # Check if username already exists
                 if username.lower() in [u.lower() for u in users_db.keys()]:
                     self.send_json_response({"success": False, "error": "Username already taken"})
                     return
                 
+                # Create new user
                 users_db[username] = {
                     "password_hash": data_persistence.hash_password(password),
                     "created": datetime.now(),
                     "last_seen": datetime.now()
                 }
             
+            # Trigger backup after registration
             threading.Thread(target=data_persistence.backup_to_github_gist, daemon=True).start()
             
             self.send_json_response({"success": True, "message": "Account created successfully"})
@@ -1843,23 +1829,26 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                 return
             
             with users_lock:
+                # Check if user exists
                 user_data = users_db.get(username)
                 if not user_data:
                     self.send_json_response({"success": False, "error": "Invalid username or password"})
                     return
                 
+                # Verify password
                 password_hash = data_persistence.hash_password(password)
                 if password_hash != user_data["password_hash"]:
                     self.send_json_response({"success": False, "error": "Invalid username or password"})
                     return
                 
+                # Update last seen
                 user_data["last_seen"] = datetime.now()
                 
+                # Create session
                 session_id = data_persistence.generate_session_id()
                 user_sessions[session_id] = {
                     "username": username,
-                    "expires": datetime.now() + timedelta(hours=24),
-                    "last_activity": datetime.now()
+                    "expires": datetime.now() + timedelta(hours=24)  # 24 hour session
                 }
             
             self.send_json_response({
@@ -1880,7 +1869,6 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         if session_id:
             with users_lock:
                 user_sessions.pop(session_id, None)
-                online_users.pop(session_id, None)
         
         self.send_json_response({"success": True, "message": "Logged out successfully"})
     
@@ -1897,7 +1885,8 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"authenticated": False})
     
     def handle_chat_send(self):
-        """Handle sending a new chat message"""
+        """Handle sending a new chat message (authenticated users only)"""
+        # Check authentication
         session_id = self.get_session_from_cookies()
         if not session_id or not self.is_valid_session(session_id):
             self.send_json_response({"success": False, "error": "Not authenticated"})
@@ -1913,13 +1902,13 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             message_data = json.loads(post_data.decode('utf-8'))
             
-            text = message_data.get('text', '')[:500]
-            reply_to = message_data.get('replyTo')
+            text = message_data.get('text', '')[:500]  # Limit message length
             
             if not text.strip():
                 self.send_json_response({"success": False, "error": "Empty message"})
                 return
             
+            # Add message to global storage
             with chatroom_lock:
                 new_id = max([msg['id'] for msg in chatroom_messages], default=0) + 1
                 
@@ -1928,19 +1917,15 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
                     'username': username,
                     'text': text.strip(),
                     'timestamp': datetime.now().isoformat(),
-                    'ip': self.client_address[0],
-                    'replyTo': reply_to
+                    'ip': self.client_address[0]
                 }
                 chatroom_messages.append(message)
                 
+                # Keep only last 100 messages
                 if len(chatroom_messages) > 100:
                     chatroom_messages.pop(0)
                     for i, msg in enumerate(chatroom_messages):
                         msg['id'] = i + 1
-            
-            # Remove user from typing list
-            with users_lock:
-                typing_users.pop(username, None)
             
             self.send_json_response({"success": True, "message": "Message sent", "messageId": new_id})
             
@@ -1950,12 +1935,14 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json_response({"success": False, "error": str(e)})
     
     def handle_chat_messages(self, path):
-        """Handle retrieving chat messages"""
+        """Handle retrieving chat messages (authenticated users only)"""
+        # Check authentication
         session_id = self.get_session_from_cookies()
         if not session_id or not self.is_valid_session(session_id):
             self.send_json_response({"error": "Not authenticated"})
             return
         
+        # Parse query parameters
         query_params = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
         since_id = int(query_params.get('since', [0])[0])
         
@@ -1970,146 +1957,37 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         
         self.send_json_response(response_data)
     
-    def handle_online_users(self):
-        """Handle getting online users"""
-        session_id = self.get_session_from_cookies()
-        if not session_id or not self.is_valid_session(session_id):
-            self.send_json_response({"error": "Not authenticated"})
-            return
-        
-        # Update current user's presence
-        with users_lock:
-            username = self.get_username_from_session(session_id)
-            if username:
-                online_users[session_id] = {
-                    'username': username,
-                    'last_ping': datetime.now()
-                }
-            
-            # Get all online users
-            users = [{"username": data['username']} for data in online_users.values()]
-            # Sort users alphabetically
-            users.sort(key=lambda x: x['username'].lower())
-        
-        self.send_json_response({"users": users})
-    
-    def handle_typing_post(self):
-        """Handle typing indicator updates"""
-        session_id = self.get_session_from_cookies()
-        if not session_id or not self.is_valid_session(session_id):
-            self.send_json_response({"error": "Not authenticated"})
-            return
-        
-        username = self.get_username_from_session(session_id)
-        if not username:
-            self.send_json_response({"error": "Not authenticated"})
-            return
-        
-        try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode('utf-8'))
-            
-            is_typing = data.get('typing', False)
-            
-            with users_lock:
-                if is_typing:
-                    typing_users[username] = datetime.now()
-                else:
-                    typing_users.pop(username, None)
-            
-            self.send_json_response({"success": True})
-            
-        except json.JSONDecodeError:
-            self.send_json_response({"success": False, "error": "Invalid JSON"})
-        except Exception as e:
-            self.send_json_response({"success": False, "error": str(e)})
-    
-    def handle_typing_get(self):
-        """Handle getting typing indicators"""
-        session_id = self.get_session_from_cookies()
-        if not session_id or not self.is_valid_session(session_id):
-            self.send_json_response({"error": "Not authenticated"})
-            return
-        
-        current_username = self.get_username_from_session(session_id)
-        current_time = datetime.now()
-        
-        with users_lock:
-            # Remove expired typing indicators (older than 5 seconds)
-            expired_users = [
-                username for username, timestamp in typing_users.items()
-                if (current_time - timestamp).total_seconds() > 5
-            ]
-            
-            for username in expired_users:
-                typing_users.pop(username, None)
-            
-            # Get current typing users (excluding current user)
-            typing = [
-                username for username in typing_users.keys()
-                if username != current_username
-            ]
-            typing.sort()
-        
-        self.send_json_response({"typing": typing})
-    
-    def handle_heartbeat(self):
-        """Handle user heartbeat to maintain online status"""
-        session_id = self.get_session_from_cookies()
-        if not session_id or not self.is_valid_session(session_id):
-            self.send_json_response({"error": "Not authenticated"})
-            return
-        
-        username = self.get_username_from_session(session_id)
-        if username:
-            with users_lock:
-                online_users[session_id] = {
-                    'username': username,
-                    'last_ping': datetime.now()
-                }
-                
-                # Update session activity
-                if session_id in user_sessions:
-                    user_sessions[session_id]['last_activity'] = datetime.now()
-        
-        self.send_json_response({"success": True})
-    
     def handle_status(self):
         """Handle server status"""
         with chatroom_lock, users_lock:
             message_count = len(chatroom_messages)
             user_count = len(users_db)
             active_sessions = len([s for s in user_sessions.values() if datetime.now() < s['expires']])
-            online_count = len(online_users)
-            typing_count = len(typing_users)
         
         data = {
             "status": "online",
-            "server": "Enhanced Chatroom Server",
-            "version": "7.0",
+            "server": "Authenticated Chatroom + Voice Room Server",
+            "version": "6.0",
             "timestamp": time.time(),
             "total_messages": message_count,
             "total_users": user_count,
             "active_sessions": active_sessions,
-            "online_users": online_count,
-            "typing_users": typing_count,
+            "signaling_server": "https://repo1-ejq1.onrender.com",
             "features": [
                 "user_authentication", 
                 "persistent_storage", 
                 "github_gist_backup",
                 "text_chat", 
-                "reply_system",
-                "typing_indicators",
-                "online_user_tracking",
-                "smart_scrolling",
-                "emoji_support"
+                "voice_room", 
+                "webrtc_voice", 
+                "push_to_talk", 
+                "render_signaling"
             ],
             "backup_status": {
                 "github_gist_configured": bool(GITHUB_GIST_TOKEN and GITHUB_GIST_ID),
                 "webhook_configured": bool(EXTERNAL_BACKUP_URL)
             },
-            "uptime": "Running with enhanced features! 🚀💬✨"
+            "uptime": "Running with authentication & persistent storage! 🔐💬🎤"
         }
         
         self.send_json_response(data)
@@ -2179,39 +2057,20 @@ class ChatroomHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
 def cleanup_expired_sessions():
-    """Background task to clean up expired sessions and inactive users"""
+    """Background task to clean up expired sessions"""
     while True:
         time.sleep(3600)  # Run every hour
         current_time = datetime.now()
-        
         with users_lock:
-            # Clean expired sessions
             expired_sessions = [
                 session_id for session_id, session_data in user_sessions.items()
                 if current_time > session_data['expires']
             ]
             for session_id in expired_sessions:
                 del user_sessions[session_id]
-                online_users.pop(session_id, None)
-            
-            # Clean inactive online users (inactive for more than 5 minutes)
-            inactive_online = [
-                session_id for session_id, data in online_users.items()
-                if (current_time - data['last_ping']).total_seconds() > 300
-            ]
-            for session_id in inactive_online:
-                del online_users[session_id]
-            
-            # Clean old typing indicators
-            inactive_typing = [
-                username for username, timestamp in typing_users.items()
-                if (current_time - timestamp).total_seconds() > 30
-            ]
-            for username in inactive_typing:
-                del typing_users[username]
         
-        if expired_sessions or inactive_online or inactive_typing:
-            print(f"🧹 Cleaned up {len(expired_sessions)} expired sessions, {len(inactive_online)} inactive users, {len(inactive_typing)} stale typing indicators")
+        if expired_sessions:
+            print(f"🧹 Cleaned up {len(expired_sessions)} expired sessions")
 
 def main():
     # Restore data from backup on startup
@@ -2228,15 +2087,13 @@ def main():
     cleanup_thread = threading.Thread(target=cleanup_expired_sessions, daemon=True)
     cleanup_thread.start()
     
-    inactive_cleanup_thread = threading.Thread(target=cleanup_inactive_users, daemon=True)
-    inactive_cleanup_thread.start()
-    
     try:
         with socketserver.TCPServer(("0.0.0.0", PORT), ChatroomHandler) as httpd:
             print("🚀" * 60)
-            print(f"✨💬 ENHANCED CHATROOM SERVER STARTED!")
+            print(f"🔐💬🎤 AUTHENTICATED CHATROOM + VOICE ROOM SERVER STARTED!")
             print("🚀" * 60)
             print(f"🌐 Server URL: http://localhost:{PORT}")
+            print(f"📡 Voice Signaling: https://repo1-ejq1.onrender.com")
             print(f"📂 Directory: {os.getcwd()}")
             print(f"🗄️ Loaded Users: {len(users_db)}")
             print(f"💬 Loaded Messages: {len(chatroom_messages)}")
@@ -2248,34 +2105,45 @@ def main():
             print("   🚪 Logout functionality")
             print("   ⚡ Session validation on all requests")
             
-            print("\n✨ NEW ENHANCED FEATURES:")
-            print("   🟢 Real-time online user tracking")
-            print("   ⌨️ Live typing indicators")
-            print("   ↩️ Reply to specific messages")
-            print("   📜 Smart scrolling behavior")
-            print("   📱 Mobile-responsive design")
-            print("   💔 Voice feature removed (maintenance mode)")
-            
             print("\n💾 PERSISTENCE FEATURES:")
             print("   📦 GitHub Gist backup (primary)")
             print("   🔄 Auto-backup every 5 minutes")
             print("   📤 Webhook backup (secondary)")
             print("   🔧 Data restoration on server restart")
-            print("   🧹 Automatic cleanup tasks")
+            print("   🧹 Automatic session cleanup")
+            
+            print("\n🎯 RENDER.COM SETUP INSTRUCTIONS:")
+            print("   1. Set environment variables in Render dashboard:")
+            print("      GITHUB_GIST_TOKEN=your_github_token_here")
+            print("      GITHUB_GIST_ID=your_gist_id_here")
+            print("      BACKUP_WEBHOOK_URL=optional_webhook_url")
+            print("   2. Create a GitHub Personal Access Token with 'gist' scope")
+            print("   3. Create a new private gist on GitHub")
+            print("   4. Copy the gist ID from the URL")
+            print("   5. Your data will persist across restarts! 🎉")
+            
+            print("\n✨ FEATURES:")
+            print("   🔐 Secure user authentication")
+            print("   💬 Real-time text chatroom")
+            print("   🎤 Voice room with WebRTC")
+            print("   📱 Mobile-friendly interface")
+            print("   😊 Emoji support")
+            print("   🔄 Auto-refresh every 2 seconds")
+            print("   💾 Persistent data storage")
+            print("   🔇 Mute/unmute functionality")
+            print("   📊 Voice activity indicators")
+            print("   👥 User session management")
             
             print("\n🌐 API ENDPOINTS:")
             print("   🏠 GET / (Login/Register page)")
-            print("   💬 GET /chat (Enhanced chatroom)")
-            print("   📝 POST /api/auth/register")
-            print("   🔑 POST /api/auth/login")
-            print("   🚪 POST /api/auth/logout")
-            print("   ✅ GET /api/auth/check")
-            print("   📤 POST /api/chat/send")
-            print("   📥 GET /api/chat/messages")
-            print("   🟢 GET /api/users/online")
-            print("   ⌨️ GET/POST /api/users/typing")
-            print("   💓 POST /api/users/heartbeat")
-            print("   📊 GET /api/status")
+            print("   💬 GET /chat (Chatroom - requires auth)")
+            print("   📝 POST /api/auth/register (Create account)")
+            print("   🔑 POST /api/auth/login (Login)")
+            print("   🚪 POST /api/auth/logout (Logout)")
+            print("   ✅ GET /api/auth/check (Check auth)")
+            print("   📤 POST /api/chat/send (Send message)")
+            print("   📥 GET /api/chat/messages (Get messages)")
+            print("   📊 GET /api/status (Server status)")
             
             backup_status = "✅ Configured" if GITHUB_GIST_TOKEN and GITHUB_GIST_ID else "❌ Not configured"
             webhook_status = "✅ Configured" if EXTERNAL_BACKUP_URL else "⚠️ Optional"
@@ -2286,7 +2154,7 @@ def main():
             
             if not GITHUB_GIST_TOKEN or not GITHUB_GIST_ID:
                 print("\n⚠️  WARNING: No backup configured!")
-                print("   Your data will be lost when server restarts.")
+                print("   Your data will be lost when Render restarts the service.")
                 print("   Please set GITHUB_GIST_TOKEN and GITHUB_GIST_ID environment variables.")
             
             print("\n🛑 Press Ctrl+C to stop the server")
@@ -2297,7 +2165,7 @@ def main():
         print("\n🛑 Server stopped by user")
         print("💾 Performing final backup...")
         data_persistence.backup_to_github_gist()
-        print("👋 Thanks for using the enhanced chatroom!")
+        print("👋 Thanks for using the authenticated chatroom!")
     except Exception as e:
         print(f"❌ Server error: {e}")
 
